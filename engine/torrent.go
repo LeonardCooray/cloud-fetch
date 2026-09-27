@@ -20,6 +20,7 @@ type Torrent struct {
 	Percent      float32
 	DownloadRate float32
 	t            *torrent.Torrent
+	magnet       string
 	updatedAt    time.Time
 }
 
