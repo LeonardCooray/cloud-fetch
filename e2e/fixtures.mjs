@@ -51,8 +51,8 @@ async function startServer({ dir, downloads, configPath, search, serverOptions }
       AutoStart: true,
       DisableEncryption: false,
       DownloadDirectory: downloads,
-      EnableUpload: false,
-      EnableSeeding: false,
+      EnableUpload: Boolean(serverOptions.seeding),
+      EnableSeeding: Boolean(serverOptions.seeding),
       IncomingPort: await freePort(),
     }));
     const args = ["--port", String(port), "--config-path", configPath, "--search-config-url", search.configUrl];
@@ -74,6 +74,8 @@ async function startServer({ dir, downloads, configPath, search, serverOptions }
 }
 
 export const test = base.extend({
+  // { title?: string, seeding?: boolean } — seeding turns on EnableUpload
+  // and EnableSeeding, so complete torrents read "Seeding" instead of "Done"
   serverOptions: [{}, { option: true }],
 
   app: async ({ serverOptions }, use) => {

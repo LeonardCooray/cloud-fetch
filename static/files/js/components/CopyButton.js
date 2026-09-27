@@ -5,11 +5,13 @@ import { copyText } from "../lib/clipboard.js";
 import { CopyFallback } from "./CopyFallback.js";
 
 // CopyButton reads getText() on click, so it copies the tree as it is then,
-// and shows the confirmation in place of the icon for 2 seconds.
+// and shows the confirmation in place of the icon for 2 seconds. Its name
+// never changes; the live region alone announces the copy.
 export function CopyButton({ getText, label, done, title }) {
   const [state, setState] = useState("idle"); // idle | copied | manual
   const [text, setText] = useState("");
   const timer = useRef(0);
+  const button = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
     const value = getText();
@@ -25,10 +27,13 @@ export function CopyButton({ getText, label, done, title }) {
   const doneText = typeof done === "function" ? done(text) : done;
   const copied = state === "copied";
   return html`<span class="copy">
-    <button type="button" class=${"icon-btn" + (copied ? " copied" : "")} aria-label=${copied ? doneText : label} onClick=${copy}>
+    <button ref=${button} type="button" class=${"icon-btn" + (copied ? " copied" : "")} aria-label=${label} onClick=${copy}>
       <${Icon} name=${copied ? "check" : "copy"} />${copied && html`<span class="copied-text" aria-hidden="true">${doneText}</span>`}
     </button>
     <span class="sr-only" aria-live="polite">${copied ? doneText : ""}</span>
-    ${state === "manual" && html`<${CopyFallback} text=${text} title=${title} onClose=${() => setState("idle")} />`}
+    ${state === "manual" && html`<${CopyFallback} text=${text} title=${title} onClose=${(restoreFocus) => {
+      setState("idle");
+      if (restoreFocus && button.current) button.current.focus();
+    }} />`}
   </span>`;
 }

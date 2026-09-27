@@ -14,14 +14,19 @@ async function grantClipboard(page, app) {
 }
 
 const row = (page, name) => page.locator(".node > .row", { hasText: name });
+// the live region is what announces a copy; the button keeps its name
+const announced = (scope) => scope.locator('[aria-live="polite"]');
 
 test("Copy link puts the file's absolute link on the clipboard", async ({ page, app }) => {
   await grantClipboard(page, app);
   await mixedShow(app);
   await page.getByRole("button", { name: "Copy link to E01.mkv" }).click();
-  await expect(row(page, "E01.mkv").getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect(announced(row(page, "E01.mkv"))).toHaveText("Copied");
+  await expect(row(page, "E01.mkv").locator(".copied-text")).toHaveText("Copied");
+  // button.copied only exists during the 2 s confirmation, so this pins the name then
+  await expect(row(page, "E01.mkv").locator("button.copied")).toHaveAttribute("aria-label", "Copy link to E01.mkv");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${app.url}download/Mixed%20Show/E01.mkv`);
-  await expect(page.getByRole("button", { name: "Copy link to E01.mkv" })).toBeVisible({ timeout: 4000 });
+  await expect(row(page, "E01.mkv").locator(".copied-text")).toHaveCount(0, { timeout: 4000 });
 });
 
 test("a file that is still downloading has no copy button", async ({ page, app }) => {
@@ -36,7 +41,7 @@ test("Copy all copies only the folder's finished files, one per line", async ({ 
   await mixedShow(app);
   await expect(row(page, "E02.mkv")).toBeVisible();
   await page.getByRole("button", { name: "Copy all links in Mixed Show" }).click();
-  await expect(page.getByRole("button", { name: "Copied 1" })).toBeVisible();
+  await expect(announced(row(page, "Mixed Show"))).toHaveText("Copied 1");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${app.url}download/Mixed%20Show/E01.mkv`);
 });
 
@@ -45,9 +50,10 @@ test("Copy all on a finished folder copies every file", async ({ page, app }) =>
   const t = makeTorrent("Full Show", [{ path: "E01.mkv", size: 16384 }, { path: "E02.mkv", size: 16384 }]);
   await writeData(app.downloads, t);
   await app.addTorrent(t.torrent);
-  await expect(page.getByRole("article", { name: "Full Show" }).locator(".badge")).toHaveText("Seeding", { timeout: 30_000 });
+  await expect(page.getByRole("article", { name: "Full Show" }).locator(".badge")).toHaveText("Done", { timeout: 30_000 });
   await page.getByRole("button", { name: "Copy all links in Full Show" }).click();
-  await expect(page.getByRole("button", { name: "Copied 2" })).toBeVisible();
+  await expect(announced(row(page, "Full Show"))).toHaveText("Copied 2");
+  await expect(row(page, "Full Show").locator("button.copied")).toHaveAttribute("aria-label", "Copy all links in Full Show");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     `${app.url}download/Full%20Show/E01.mkv\n${app.url}download/Full%20Show/E02.mkv`,
   );
@@ -68,7 +74,7 @@ test("on plain HTTP the copy falls back to execCommand", async ({ page, app }) =
   await expect(page.getByRole("img", { name: "Connected" })).toBeVisible();
   await mixedShow(app);
   await page.getByRole("button", { name: "Copy link to E01.mkv" }).click();
-  await expect(row(page, "E01.mkv").getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect(announced(row(page, "E01.mkv"))).toHaveText("Copied");
   expect(await page.evaluate(() => window.__copied)).toEqual([`${app.url}download/Mixed%20Show/E01.mkv`]);
 });
 
@@ -89,6 +95,7 @@ test("when copying is blocked, the link opens selected for copying by hand", asy
   expect(await area.evaluate((el) => el.selectionStart === 0 && el.selectionEnd === el.value.length)).toBe(true);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy link to E01.mkv" })).toBeFocused();
 });
 
 test("download rows are comfortable to tap on a phone", async ({ page, app }) => {
@@ -112,6 +119,21 @@ test("pausing keeps half-written files out of Copy link and Copy all", async ({ 
   await expect(row(page, "E02.mkv")).toBeVisible();
   await expect(row(page, "E02.mkv").getByRole("button", { name: /^Copy/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Copy all links in Mixed Show" }).click();
-  await expect(page.getByRole("button", { name: "Copied 1" })).toBeVisible();
+  await expect(announced(row(page, "Mixed Show"))).toHaveText("Copied 1");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${app.url}download/Mixed%20Show/E01.mkv`);
+});
+
+test("clicking outside closes the manual-copy popover without grabbing focus", async ({ page, app }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "isSecureContext", { value: false });
+    document.execCommand = () => false;
+  });
+  await page.reload();
+  await expect(page.getByRole("img", { name: "Connected" })).toBeVisible();
+  await mixedShow(app);
+  await page.getByRole("button", { name: "Copy link to E01.mkv" }).click();
+  await expect(page.getByRole("dialog", { name: "Copy link" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Search, magnet link or torrent URL" }).click();
+  await expect(page.getByRole("dialog", { name: "Copy link" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Search, magnet link or torrent URL" })).toBeFocused();
 });

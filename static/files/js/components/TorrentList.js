@@ -5,11 +5,11 @@ import { sortTorrents } from "../lib/tree.js";
 import { STATUS_LABELS, statusLine, torrentStatus } from "../lib/status.js";
 import { FileTable } from "./FileTable.js";
 
-function TorrentCard({ t, api, onError }) {
+function TorrentCard({ t, seeding, api, onError }) {
   const [showFiles, setShowFiles] = useState(false);
   const act = (action) => api.torrent(action, t.InfoHash).catch(onError);
-  const status = torrentStatus(t);
-  const line = statusLine(t);
+  const status = torrentStatus(t, { seeding });
+  const line = statusLine(t, { seeding });
   const pct = t.Percent || 0;
   return html`<article class=${"card torrent is-" + status} aria-label=${t.Name || t.InfoHash}>
     ${!t.Loaded && html`<div class="overlay"><${Icon} name="loader" class="spin" /> Loading</div>`}
@@ -40,7 +40,7 @@ function TorrentCard({ t, api, onError }) {
   </article>`;
 }
 
-export function TorrentList({ torrents, api, onError }) {
+export function TorrentList({ torrents, seeding, api, onError }) {
   const list = sortTorrents(torrents);
   return html`<section class="torrents">
     <div class="section-header">
@@ -49,6 +49,6 @@ export function TorrentList({ torrents, api, onError }) {
     </div>
     ${list.length === 0
       ? html`<p class="empty">Add torrents above</p>`
-      : list.map((t) => html`<${TorrentCard} key=${t.InfoHash} t=${t} api=${api} onError=${onError} />`)}
+      : list.map((t) => html`<${TorrentCard} key=${t.InfoHash} t=${t} seeding=${seeding} api=${api} onError=${onError} />`)}
   </section>`;
 }
