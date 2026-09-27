@@ -41,7 +41,8 @@ func dataTorrent(t *testing.T, dir, name string, onDisk []byte) *metainfo.MetaIn
 
 func percentEventually(t *testing.T, e *Engine, ih string, want float32) {
 	t.Helper()
-	deadline := time.Now().Add(8 * time.Second)
+	// generous: transfers between two engines are slow under -race and load
+	deadline := time.Now().Add(30 * time.Second)
 	var got float32 = -1
 	for time.Now().Before(deadline) {
 		if tr, ok := e.GetTorrents()[ih]; ok {

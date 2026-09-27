@@ -72,7 +72,7 @@ func TestReconfiguringDuringVerificationDoesNotFreeze(t *testing.T) {
 		}
 		time.Sleep(time.Duration(i) * time.Millisecond)
 		within(t, 10*time.Second, "reconfigure", func() {
-			if err := e.Configure(Config{DownloadDirectory: dir, AutoStart: true, IncomingPort: freePort(t)}); err != nil {
+			if err := configureOnFreePort(t, e, Config{DownloadDirectory: dir, AutoStart: true}); err != nil {
 				t.Error(err)
 			}
 		})
@@ -128,7 +128,7 @@ func TestFailedRestoreLeavesEngineStoppedNotHung(t *testing.T) {
 	})
 
 	newClient = realNew
-	if err := e.Configure(Config{DownloadDirectory: dir, AutoStart: true, IncomingPort: freePort(t)}); err != nil {
+	if err := configureOnFreePort(t, e, Config{DownloadDirectory: dir, AutoStart: true}); err != nil {
 		t.Fatalf("engine can't recover once a client starts again: %v", err)
 	}
 	torrentState(t, e, ih)

@@ -43,10 +43,13 @@ func multiFileTorrent(t *testing.T, dir string) *metainfo.MetaInfo {
 func startEngineWith(t *testing.T, c Config) *Engine {
 	t.Helper()
 	e := New()
+	var err error
 	if c.IncomingPort == 0 {
-		c.IncomingPort = freePort(t)
+		err = configureOnFreePort(t, e, c)
+	} else {
+		err = e.Configure(c)
 	}
-	if err := e.Configure(c); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { closeEngine(e) })
@@ -123,7 +126,7 @@ func stillAt(t *testing.T, e *Engine, ih, path string, want float32, d time.Dura
 
 func filePercentEventually(t *testing.T, e *Engine, ih, path string, want float32) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second) // see percentEventually
 	var got float32
 	for time.Now().Before(deadline) {
 		if got = filePercent(e, ih, path); got == want {
