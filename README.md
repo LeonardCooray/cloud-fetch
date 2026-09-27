@@ -98,6 +98,14 @@ The built-in provider list is [`server/search-config.json`](server/search-config
 
 On first start, an existing `cloud-torrent.json` next to the default config path is renamed to `cloud-fetch.json`. A custom `--config-path` is never touched.
 
+### Development
+
+The web UI is plain ES modules in `static/files/`, with Preact and htm vendored in `static/files/js/vendor/` (versions and checksums in `VENDOR.md`). There is no build step: edit a file, run `go build`, reload the page. The UI logic has unit tests that run on Node 22 or later:
+
+``` sh
+node --test "static/files/js/**/*.test.mjs"
+```
+
 ### Credits
 
 Cloud Fetch is based on [jpillora/cloud-torrent](https://github.com/jpillora/cloud-torrent), Copyright (c) 2017 Jaime Pillora, itself a rewrite of [node-torrent-cloud](https://github.com/jpillora/node-torrent-cloud). The torrent engine is [anacrolix/torrent](https://github.com/anacrolix/torrent).

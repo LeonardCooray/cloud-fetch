@@ -31,6 +31,12 @@ jobs:
         run: go build -v -o /dev/null .
       - name: Test
         run: go test -race ./...
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: UI unit tests
+        run: node --test "static/files/js/**/*.test.mjs"
   # ================
   # RELEASE BINARIES (on push "v*" tag)
   # ================
