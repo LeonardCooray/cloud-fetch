@@ -202,11 +202,26 @@ func freePort(t *testing.T) int {
 	return 0
 }
 
+// reconfigureOnFreePort retries on a bind collision (see freePort) and
+// closes the torrent client when the test ends.
+func reconfigureOnFreePort(t *testing.T, s *Server, c engine.Config) error {
+	t.Helper()
+	t.Cleanup(s.engine.Close)
+	var err error
+	for i := 0; i < 5; i++ {
+		c.IncomingPort = freePort(t)
+		if err = s.reconfigure(c); err == nil || !strings.Contains(err.Error(), "address already in use") {
+			return err
+		}
+	}
+	return err
+}
+
 func TestConfigFileIsOwnerOnly(t *testing.T) {
 	s, root := newTestServer(t, "")
 	// existing installs already have a 0755 file; the fix must tighten it
 	os.WriteFile(s.ConfigPath, []byte("{}"), 0755)
-	err := s.reconfigure(engine.Config{DownloadDirectory: filepath.Join(root, "downloads"), IncomingPort: freePort(t)})
+	err := reconfigureOnFreePort(t, s, engine.Config{DownloadDirectory: filepath.Join(root, "downloads")})
 	if err != nil {
 		t.Fatal(err)
 	}

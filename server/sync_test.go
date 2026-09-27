@@ -175,7 +175,7 @@ func TestFirstSyncIncludesLoadedConfig(t *testing.T) {
 // not race: the engine's own map and structs may not be shared with velox.
 func TestSyncSurvivesTorrentChurn(t *testing.T) {
 	s, root := newTestServer(t, "")
-	if err := s.reconfigure(engine.Config{DownloadDirectory: filepath.Join(root, "downloads"), IncomingPort: freePort(t)}); err != nil {
+	if err := reconfigureOnFreePort(t, s, engine.Config{DownloadDirectory: filepath.Join(root, "downloads")}); err != nil {
 		t.Fatal(err)
 	}
 	s.initSync()
