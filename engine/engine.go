@@ -12,7 +12,7 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 )
 
-// the Engine Cloud Torrent engine, backed by anacrolix/torrent
+// Engine is the Cloud Fetch torrent engine, backed by anacrolix/torrent
 type Engine struct {
 	mut    sync.Mutex
 	client *torrent.Client

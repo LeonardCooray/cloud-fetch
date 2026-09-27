@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -15,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LeonardCooray/cloud-fetch/engine"
+	"github.com/LeonardCooray/cloud-fetch/static"
 	"github.com/NYTimes/gziphandler"
-	"github.com/jpillora/cloud-torrent/engine"
-	"github.com/jpillora/cloud-torrent/static"
 	"github.com/jpillora/cookieauth"
 	"github.com/jpillora/requestlog"
 	"github.com/jpillora/scraper/scraper"
@@ -26,7 +25,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-//Server is the "State" portion of the diagram
+// Server is the "State" portion of the diagram
 type Server struct {
 	//config
 	Title      string `help:"Title of this instance" env:"TITLE"`
@@ -44,6 +43,8 @@ type Server struct {
 	CertCache     string `help:"Where to keep Let's Encrypt certificates (default: certs/ next to the config file)" opts:"short=-"`
 	ACMEStaging   bool   `help:"Use Let's Encrypt's staging server (untrusted test certificates, generous rate limits)" opts:"name=acme-staging,short=-"`
 	ACMEDirectory string `help:"ACME directory URL, to use a certificate authority other than Let's Encrypt" opts:"name=acme-directory,short=-"`
+	//search
+	SearchConfigURL string `help:"URL of the search provider list, re-checked every 30 minutes; empty uses only the built-in list" opts:"name=search-config-url,short=-"`
 	//http handlers
 	files, static http.Handler
 	scraper       *scraper.Handler
@@ -102,7 +103,7 @@ func (s *Server) Run(version string) error {
 			"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
 		},
 	}
-	if err := s.scraper.LoadConfig(defaultSearchConfig); err != nil {
+	if err := s.scraper.LoadConfig(builtinSearchConfig()); err != nil {
 		log.Fatal(err)
 	}
 	//scraper
@@ -117,8 +118,13 @@ func (s *Server) Run(version string) error {
 		EnableUpload:      true,
 		AutoStart:         true,
 	}
+	if moved, err := migrateLegacyConfig(s.ConfigPath); err != nil {
+		return fmt.Errorf("migrating %s: %s", legacyConfigName, err)
+	} else if moved {
+		log.Printf("Renamed %s to %s (Cloud Torrent is now Cloud Fetch)", legacyConfigName, s.ConfigPath)
+	}
 	if _, err := os.Stat(s.ConfigPath); err == nil {
-		if b, err := ioutil.ReadFile(s.ConfigPath); err != nil {
+		if b, err := os.ReadFile(s.ConfigPath); err != nil {
 			return fmt.Errorf("Read configuration error: %s", err)
 		} else if len(b) == 0 {
 			//ignore empty file
@@ -259,7 +265,7 @@ func (s *Server) reconfigure(c engine.Config) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(&c, "", "  ")
-	ioutil.WriteFile(s.ConfigPath, b, 0600)
+	os.WriteFile(s.ConfigPath, b, 0600)
 	// WriteFile keeps an existing file's mode, and older installs wrote 0755
 	os.Chmod(s.ConfigPath, 0600)
 	s.state.Config = c

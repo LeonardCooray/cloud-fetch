@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jpillora/cloud-torrent/engine"
-	ctstatic "github.com/jpillora/cloud-torrent/static"
+	"github.com/LeonardCooray/cloud-fetch/engine"
+	ctstatic "github.com/LeonardCooray/cloud-fetch/static"
 )
 
 // newTestServer mirrors what Run wires up, minus the listener and pollers.
@@ -24,7 +24,7 @@ func newTestServer(t *testing.T, auth string) (*Server, string) {
 	if err := os.Mkdir(dl, 0755); err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Auth: auth, ConfigPath: filepath.Join(root, "cloud-torrent.json")}
+	s := &Server{Auth: auth, ConfigPath: filepath.Join(root, DefaultConfigName)}
 	s.state.Users = map[string]string{}
 	s.state.Config.DownloadDirectory = dl
 	s.files = http.HandlerFunc(s.serveFiles)

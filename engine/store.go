@@ -13,7 +13,7 @@ import (
 
 // storeDirName lives inside the download directory so it survives in Docker,
 // where only the downloads volume is persisted. listFiles hides dot entries.
-const storeDirName = ".cloud-torrent"
+const storeDirName = ".cloud-fetch"
 
 type record struct {
 	InfoHash string `json:"infoHash"`

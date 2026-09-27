@@ -1,4 +1,4 @@
-module github.com/jpillora/cloud-torrent
+module github.com/LeonardCooray/cloud-fetch
 
 go 1.25.4
 
