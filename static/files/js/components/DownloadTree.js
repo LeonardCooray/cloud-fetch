@@ -4,7 +4,7 @@ import { Icon } from "../icons.js";
 import { ago, bytes } from "../lib/format.js";
 import {
   absoluteHref, childPath, downloadHref, fileIcon, findTorrentFile, finishedFiles, hasFinishedFile,
-  isDir, isDownloading, previewKind, startsClosed,
+  indexTorrentFiles, isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
 import { CopyButton } from "./CopyButton.js";
 
@@ -18,7 +18,7 @@ function Preview({ kind, src }) {
   return html`<video ref=${player} class="preview" controls autoplay playsinline src=${src}></video>`;
 }
 
-function TreeNode({ node, path, torrents, api, onError }) {
+function TreeNode({ node, path, files, api, onError }) {
   const dir = isDir(node);
   const [open, setOpen] = useState(() => !startsClosed(node));
   const [confirm, setConfirm] = useState(false);
@@ -28,9 +28,9 @@ function TreeNode({ node, path, torrents, api, onError }) {
   const settle = useRef(0);
   useEffect(() => () => clearTimeout(settle.current), []);
   const kind = dir ? null : previewKind(path);
-  const downloading = !dir && isDownloading(findTorrentFile(torrents, path));
+  const downloading = !dir && isDownloading(findTorrentFile(files, path));
   const href = downloadHref(path);
-  const canCopy = hasFinishedFile(node, path, torrents);
+  const canCopy = hasFinishedFile(node, path, files);
   const linksOf = (paths) => paths.map((p) => absoluteHref(p, window.location.href)).join("\n");
 
   useEffect(() => {
@@ -72,7 +72,7 @@ function TreeNode({ node, path, torrents, api, onError }) {
       ${!downloading && html`<span class="controls">
         ${dir
           ? canCopy && html`<${CopyButton} title="Copy links"
-              getText=${() => linksOf(finishedFiles(node, path, torrents))}
+              getText=${() => linksOf(finishedFiles(node, path, files))}
               label=${"Copy all links in " + node.Name}
               done=${(text) => "Copied " + text.split("\n").length} />`
           : canCopy && html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
@@ -92,20 +92,21 @@ function TreeNode({ node, path, torrents, api, onError }) {
     ${preview && kind && html`<${Preview} kind=${kind} src=${href} />`}
     ${dir && open && node.Children.length > 0 && html`<ul class="tree">
       ${node.Children.map((c) => html`<${TreeNode} key=${c.Name} node=${c} path=${childPath(path, c.Name)}
-        torrents=${torrents} api=${api} onError=${onError} />`)}
+        files=${files} api=${api} onError=${onError} />`)}
     </ul>`}
   </li>`;
 }
 
 export function DownloadTree({ root, torrents, system, api, onError }) {
   const children = (root && root.Children) || [];
+  const files = indexTorrentFiles(torrents);
   const free = system && system.set ? `${bytes(system.diskTotal - system.diskUsed)} free` : "";
   return html`<section class="downloads">
     <div class="section-header"><h3>Downloads</h3><span class="muted">${free}</span></div>
     ${children.length === 0
       ? html`<p class="empty">Download files above</p>`
       : html`<ul class="tree">
-          ${children.map((n) => html`<${TreeNode} key=${n.Name} node=${n} path=${n.Name} torrents=${torrents} api=${api} onError=${onError} />`)}
+          ${children.map((n) => html`<${TreeNode} key=${n.Name} node=${n} path=${n.Name} files=${files} api=${api} onError=${onError} />`)}
         </ul>`}
   </section>`;
 }

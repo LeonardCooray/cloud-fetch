@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   childPath, downloadHref, isDir, previewKind, fileIcon,
-  findTorrentFile, isDownloading, startsClosed, sortTorrents,
+  indexTorrentFiles, findTorrentFile, isDownloading, startsClosed, sortTorrents,
   absoluteHref, finishedFiles, hasFinishedFile,
 } from "./tree.js";
 
@@ -43,9 +43,20 @@ const t1 = { InfoHash: "a", Name: "Show", Loaded: true, Started: true, Files: [{
 const t2 = { InfoHash: "b", Name: "Other", Loaded: false, Started: true, Files: null };
 
 test("findTorrentFile finds the torrent a downloaded file belongs to", () => {
-  assert.deepEqual(findTorrentFile({ a: t1, b: t2 }, "Show/e2.mkv"), { torrent: t1, file: t1.Files[1] });
-  assert.equal(findTorrentFile({ a: t1, b: t2 }, "Show/e3.mkv"), null);
-  assert.equal(findTorrentFile(null, "Show/e1.mkv"), null);
+  assert.deepEqual(findTorrentFile(indexTorrentFiles({ a: t1, b: t2 }), "Show/e2.mkv"), { torrent: t1, file: t1.Files[1] });
+  assert.equal(findTorrentFile(indexTorrentFiles({ a: t1, b: t2 }), "Show/e3.mkv"), null);
+  assert.equal(findTorrentFile(indexTorrentFiles(null), "Show/e1.mkv"), null);
+});
+
+test("indexTorrentFiles keeps the first torrent that lists a path", () => {
+  const dup = { InfoHash: "c", Loaded: true, Started: false, Files: [{ Path: "Show/e1.mkv", Percent: 100 }] };
+  assert.equal(findTorrentFile(indexTorrentFiles({ a: t1, c: dup }), "Show/e1.mkv").torrent, t1);
+});
+
+test("indexTorrentFiles skips torrents without file info yet", () => {
+  const index = indexTorrentFiles({ b: t2, x: { InfoHash: "x", Files: [null, { Path: "a.iso", Percent: 1 }] } });
+  assert.equal(index.size, 1);
+  assert.equal(findTorrentFile(index, "a.iso").file.Percent, 1);
 });
 
 test("isDownloading only for loaded, started, unfinished files", () => {
@@ -97,46 +108,46 @@ const tree = {
 const torrent = (files, over = {}) => ({ h: { Loaded: true, Started: true, Files: files, ...over } });
 
 test("finishedFiles walks a folder in tree order", () => {
-  assert.deepEqual(finishedFiles(tree, "Show", {}), ["Show/E01.mkv", "Show/Extras/b.txt", "Show/E02.mkv"]);
+  assert.deepEqual(finishedFiles(tree, "Show", indexTorrentFiles({})), ["Show/E01.mkv", "Show/Extras/b.txt", "Show/E02.mkv"]);
 });
 
 test("finishedFiles skips files a started torrent is still writing", () => {
   const torrents = torrent([{ Path: "Show/E01.mkv", Percent: 100 }, { Path: "Show/E02.mkv", Percent: 50 }]);
-  assert.deepEqual(finishedFiles(tree, "Show", torrents), ["Show/E01.mkv", "Show/Extras/b.txt"]);
+  assert.deepEqual(finishedFiles(tree, "Show", indexTorrentFiles(torrents)), ["Show/E01.mkv", "Show/Extras/b.txt"]);
 });
 
 test("finishedFiles leaves out a paused torrent's partial files", () => {
   const torrents = torrent([{ Path: "Show/E02.mkv", Percent: 50 }], { Started: false });
-  assert.deepEqual(finishedFiles(tree, "Show", torrents), ["Show/E01.mkv", "Show/Extras/b.txt"]);
+  assert.deepEqual(finishedFiles(tree, "Show", indexTorrentFiles(torrents)), ["Show/E01.mkv", "Show/Extras/b.txt"]);
 });
 
 test("finishedFiles leaves out any .part file, even with no torrent left", () => {
   const partTree = { Name: "Show", Children: [{ Name: "E01.mkv", Children: null }, { Name: "E02.mkv.part", Children: null }] };
-  assert.deepEqual(finishedFiles(partTree, "Show", {}), ["Show/E01.mkv"]);
+  assert.deepEqual(finishedFiles(partTree, "Show", indexTorrentFiles({})), ["Show/E01.mkv"]);
 });
 
 test("finishedFiles on a single file", () => {
-  assert.deepEqual(finishedFiles({ Name: "a.iso", Children: null }, "a.iso", {}), ["a.iso"]);
+  assert.deepEqual(finishedFiles({ Name: "a.iso", Children: null }, "a.iso", indexTorrentFiles({})), ["a.iso"]);
   const busy = torrent([{ Path: "a.iso", Percent: 10 }]);
-  assert.deepEqual(finishedFiles({ Name: "a.iso", Children: null }, "a.iso", busy), []);
+  assert.deepEqual(finishedFiles({ Name: "a.iso", Children: null }, "a.iso", indexTorrentFiles(busy)), []);
 });
 
 test("finishedFiles on an empty folder", () => {
-  assert.deepEqual(finishedFiles({ Name: "Empty", Children: [] }, "Empty", {}), []);
+  assert.deepEqual(finishedFiles({ Name: "Empty", Children: [] }, "Empty", indexTorrentFiles({})), []);
 });
 
 // anacrolix keeps an unfinished file on disk as "<name>.part" and renames it
 // when it completes, so the Downloads tree lists the .part name
 test("findTorrentFile matches a file still named .part on disk", () => {
   const torrents = torrent([{ Path: "Show/E02.mkv", Percent: 50 }]);
-  assert.equal(findTorrentFile(torrents, "Show/E02.mkv.part").file.Path, "Show/E02.mkv");
-  assert.equal(findTorrentFile(torrents, "Show/E03.mkv.part"), null);
+  assert.equal(findTorrentFile(indexTorrentFiles(torrents), "Show/E02.mkv.part").file.Path, "Show/E02.mkv");
+  assert.equal(findTorrentFile(indexTorrentFiles(torrents), "Show/E03.mkv.part"), null);
 });
 
 test("finishedFiles skips a .part file a started torrent is still writing", () => {
   const partTree = { Name: "Show", Children: [{ Name: "E01.mkv", Children: null }, { Name: "E02.mkv.part", Children: null }] };
   const torrents = torrent([{ Path: "Show/E01.mkv", Percent: 100 }, { Path: "Show/E02.mkv", Percent: 50 }]);
-  assert.deepEqual(finishedFiles(partTree, "Show", torrents), ["Show/E01.mkv"]);
+  assert.deepEqual(finishedFiles(partTree, "Show", indexTorrentFiles(torrents)), ["Show/E01.mkv"]);
 });
 
 test("absoluteHref never carries credentials from the page URL", () => {
@@ -144,19 +155,19 @@ test("absoluteHref never carries credentials from the page URL", () => {
 });
 
 test("hasFinishedFile says whether a folder has anything to copy", () => {
-  assert.equal(hasFinishedFile(tree, "Show", {}), true);
-  assert.equal(hasFinishedFile({ Name: "Empty", Children: [] }, "Empty", {}), false);
+  assert.equal(hasFinishedFile(tree, "Show", indexTorrentFiles({})), true);
+  assert.equal(hasFinishedFile({ Name: "Empty", Children: [] }, "Empty", indexTorrentFiles({})), false);
   const partOnly = { Name: "Show", Children: [{ Name: "E02.mkv.part", Children: null }] };
-  assert.equal(hasFinishedFile(partOnly, "Show", {}), false);
+  assert.equal(hasFinishedFile(partOnly, "Show", indexTorrentFiles({})), false);
   const busy = torrent([{ Path: "a.iso", Percent: 10 }]);
-  assert.equal(hasFinishedFile({ Name: "a.iso", Children: null }, "a.iso", busy), false);
+  assert.equal(hasFinishedFile({ Name: "a.iso", Children: null }, "a.iso", indexTorrentFiles(busy)), false);
 });
 
 test("hasFinishedFile stops at the first finished file", () => {
   let visited = 0;
   const counting = (name) => ({ Name: name, Children: null, get Size() { return 0; } });
   const children = [counting("a"), counting("b"), counting("c")];
-  const torrents = new Proxy({}, { ownKeys() { visited++; return []; } });
-  assert.equal(hasFinishedFile({ Name: "Show", Children: children }, "Show", torrents), true);
+  const files = new (class extends Map { get(k) { visited++; return super.get(k); } })();
+  assert.equal(hasFinishedFile({ Name: "Show", Children: children }, "Show", files), true);
   assert.equal(visited, 1, "only the first file was looked up");
 });
