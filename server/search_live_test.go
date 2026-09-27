@@ -4,9 +4,11 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,7 +53,15 @@ func TestLiveSearchProviders(t *testing.T) {
 			// the scraper drops any row missing a configured field, so a
 			// broken selector shows up here as no results at all
 			if len(results) == 0 {
-				t.Fatalf("search %q returned no results (%s)", query, whatCameBack(h.Config[id], query))
+				page, challenged := whatCameBack(h.Config[id], query)
+				if challenged {
+					// Cloudflare challenges some sites from datacenter IPs
+					// (GitHub's runners) but not from home connections, and
+					// a check that's always red stops being read
+					noteSkip(id, page)
+					t.Skipf("Cloudflare challenged this network, so the search couldn't be checked (%s)", page)
+				}
+				t.Fatalf("search %q returned no results (%s)", query, page)
 			}
 			first := results[0]
 			if first["name"] == "" {
@@ -96,8 +106,9 @@ func TestLiveSearchProviders(t *testing.T) {
 var titleRe = regexp.MustCompile(`(?is)<title>\s*(.*?)\s*</title>`)
 
 // whatCameBack refetches a search page to tell a block (a Cloudflare
-// challenge, a 403) apart from a changed page layout.
-func whatCameBack(e *scraper.Endpoint, query string) string {
+// challenge, a 403) apart from a changed page layout. challenged is
+// Cloudflare's own marker on its challenge pages.
+func whatCameBack(e *scraper.Endpoint, query string) (page string, challenged bool) {
 	// the scraper query-escapes values after the "?" and leaves the rest as is
 	q := query
 	if strings.Contains(e.URL, "?") && strings.Index(e.URL, "{{query}}") > strings.Index(e.URL, "?") {
@@ -106,14 +117,14 @@ func whatCameBack(e *scraper.Endpoint, query string) string {
 	u := strings.NewReplacer("{{query}}", q, "{{page:1}}", "1").Replace(e.URL)
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		return err.Error()
+		return err.Error(), false
 	}
 	for k, v := range e.Headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err.Error()
+		return err.Error(), false
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -121,7 +132,23 @@ func whatCameBack(e *scraper.Endpoint, query string) string {
 	if m := titleRe.FindSubmatch(b); m != nil {
 		title = string(m[1])
 	}
-	return "GET " + resp.Request.URL.String() + ": " + resp.Status + ", title " + strconv.Quote(title)
+	page = "GET " + resp.Request.URL.String() + ": " + resp.Status + ", title " + strconv.Quote(title)
+	return page, resp.Header.Get("Cf-Mitigated") == "challenge"
+}
+
+// noteSkip lists a skipped provider on the GitHub Actions run page, where a
+// skip is otherwise only visible in the test log.
+func noteSkip(id, page string) {
+	path := os.Getenv("GITHUB_STEP_SUMMARY")
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "- **%s** skipped: Cloudflare challenged the runner (%s)\n", id, page)
 }
 
 // checkTorrentURL fetches a result's .torrent the way the engine would and
