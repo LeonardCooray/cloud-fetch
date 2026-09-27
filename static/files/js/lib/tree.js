@@ -27,9 +27,12 @@ export function fileIcon(path) {
   return "file";
 }
 
+// The engine keeps an unfinished file on disk as "<name>.part" and renames
+// it when it completes, so a .part path matches the torrent file it becomes.
 export function findTorrentFile(torrents, path) {
+  const target = path.endsWith(".part") ? path.slice(0, -".part".length) : path;
   for (const torrent of Object.values(torrents || {})) {
-    const file = (torrent.Files || []).find((f) => f && f.Path === path);
+    const file = (torrent.Files || []).find((f) => f && (f.Path === path || f.Path === target));
     if (file) return { torrent, file };
   }
   return null;

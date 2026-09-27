@@ -3,8 +3,10 @@ import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { ago, bytes } from "../lib/format.js";
 import {
-  childPath, downloadHref, fileIcon, findTorrentFile, isDir, isDownloading, previewKind, startsClosed,
+  absoluteHref, childPath, downloadHref, fileIcon, findTorrentFile, finishedFiles,
+  isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
+import { CopyButton } from "./CopyButton.js";
 
 // Players take focus when they open, so Space controls them rather than
 // pressing the preview toggle that was just clicked.
@@ -28,6 +30,8 @@ function TreeNode({ node, path, torrents, api, onError }) {
   const kind = dir ? null : previewKind(path);
   const downloading = !dir && isDownloading(findTorrentFile(torrents, path));
   const href = downloadHref(path);
+  const finished = dir ? finishedFiles(node, path, torrents) : null;
+  const linksOf = (paths) => paths.map((p) => absoluteHref(p, window.location.href)).join("\n");
 
   useEffect(() => {
     if (!confirm) return undefined;
@@ -66,6 +70,13 @@ function TreeNode({ node, path, torrents, api, onError }) {
         : html`<${Icon} name=${downloading ? "loader" : fileIcon(path)} class=${downloading ? "spin" : ""} />`}
       ${downloading ? html`<span class="label">${node.Name}</span>` : html`<a class="label" href=${href}>${node.Name}</a>`}
       ${!downloading && html`<span class="controls">
+        ${dir
+          ? finished.length > 0 && html`<${CopyButton} title="Copy links"
+              getText=${() => linksOf(finishedFiles(node, path, torrents))}
+              label=${"Copy all links in " + node.Name}
+              done=${(text) => "Copied " + text.split("\n").length} />`
+          : html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
+              label=${"Copy link to " + node.Name} done="Copied" />`}
         ${kind && html`<button type="button" class=${"icon-btn" + (preview ? " on" : "")} aria-pressed=${preview}
           aria-label=${(preview ? "Hide preview of " : "Preview ") + node.Name} onClick=${() => setPreview(!preview)}>
           <${Icon} name=${preview ? "x" : "play"} />

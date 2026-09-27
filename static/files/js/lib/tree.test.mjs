@@ -119,3 +119,17 @@ test("finishedFiles on a single file", () => {
 test("finishedFiles on an empty folder", () => {
   assert.deepEqual(finishedFiles({ Name: "Empty", Children: [] }, "Empty", {}), []);
 });
+
+// anacrolix keeps an unfinished file on disk as "<name>.part" and renames it
+// when it completes, so the Downloads tree lists the .part name
+test("findTorrentFile matches a file still named .part on disk", () => {
+  const torrents = torrent([{ Path: "Show/E02.mkv", Percent: 50 }]);
+  assert.equal(findTorrentFile(torrents, "Show/E02.mkv.part").file.Path, "Show/E02.mkv");
+  assert.equal(findTorrentFile(torrents, "Show/E03.mkv.part"), null);
+});
+
+test("finishedFiles skips a .part file a started torrent is still writing", () => {
+  const partTree = { Name: "Show", Children: [{ Name: "E01.mkv", Children: null }, { Name: "E02.mkv.part", Children: null }] };
+  const torrents = torrent([{ Path: "Show/E01.mkv", Percent: 100 }, { Path: "Show/E02.mkv", Percent: 50 }]);
+  assert.deepEqual(finishedFiles(partTree, "Show", torrents), ["Show/E01.mkv"]);
+});
