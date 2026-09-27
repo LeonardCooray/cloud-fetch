@@ -48,6 +48,7 @@ export function createApi(fetchImpl) {
     url: (u) => post("url", u),
     torrentFile: (bytes) => post("torrentfile", bytes),
     torrent: (action, infohash) => post("torrent", `${action}:${infohash}`),
+    file: (action, infohash, path) => post("file", `${action}:${infohash}:${path}`),
     configure: (config) => post("configure", JSON.stringify(config)),
     search: (provider, query, page) =>
       getJSON(`search/${enc(provider)}?${new URLSearchParams({ query, page: String(page) })}`),

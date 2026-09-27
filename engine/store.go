@@ -19,6 +19,8 @@ type record struct {
 	InfoHash string `json:"infoHash"`
 	Magnet   string `json:"magnet,omitempty"`
 	Started  bool   `json:"started"`
+	// StoppedFiles lists the file paths deselected with StopFile.
+	StoppedFiles []string `json:"stoppedFiles,omitempty"`
 }
 
 type savedTorrent struct {

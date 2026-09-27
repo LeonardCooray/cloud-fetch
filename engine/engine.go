@@ -3,9 +3,11 @@ package engine
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -27,8 +29,18 @@ func New() *Engine {
 }
 
 func (e *Engine) Config() Config {
+	e.mut.Lock()
+	defer e.mut.Unlock()
 	return e.config
 }
+
+var errNotRunning = errors.New("torrent client not running")
+
+// restoreAttempts and restoreBackoff cover the previous port being taken
+// briefly by something else while the old client was closed.
+const restoreAttempts = 5
+
+var restoreBackoff = 200 * time.Millisecond
 
 func (e *Engine) Configure(c Config) error {
 	// validate before touching the running client: a rejected config must
@@ -37,35 +49,66 @@ func (e *Engine) Configure(c Config) error {
 		return fmt.Errorf("Invalid incoming port (%d)", c.IncomingPort)
 	}
 	e.mut.Lock()
-	old, prev := e.client, e.config
+	hadClient, prev := e.client != nil, e.config
+	e.closeClientLocked()
 	e.mut.Unlock()
-	if old != nil {
-		old.Close()
+	if hadClient {
 		time.Sleep(1 * time.Second)
 	}
 	client, err := newClient(c)
-	if err != nil {
-		if old != nil {
-			// e.g. the new port is taken: bring the previous setup back
-			if back, berr := newClient(prev); berr == nil {
-				e.install(prev, back)
-			} else {
-				log.Printf("reconfigure failed (%s) and restoring the previous config failed too: %s", err, berr)
-			}
-		}
+	if err == nil {
+		e.install(c, client)
+		return nil
+	}
+	if !hadClient {
 		return err
 	}
-	e.install(c, client)
-	return nil
+	// e.g. the new port is taken: bring the previous setup back
+	var berr error
+	for i := 0; i < restoreAttempts; i++ {
+		if i > 0 {
+			time.Sleep(restoreBackoff)
+		}
+		var back *torrent.Client
+		if back, berr = newClient(prev); berr == nil {
+			e.install(prev, back)
+			return err
+		}
+	}
+	log.Printf("reconfigure failed (%s) and restoring the previous config failed too: %s", err, berr)
+	return err
 }
 
-func newClient(c Config) (*torrent.Client, error) {
+// closeClientLocked stops verifications before closing: anacrolix/torrent
+// v1.59.1 leaks the client lock if a piece check starts on a closed torrent.
+// Afterwards the engine has no client until install gives it one.
+func (e *Engine) closeClientLocked() {
+	if e.client == nil {
+		return
+	}
+	for _, t := range e.ts {
+		t.stopVerify()
+	}
+	e.client.Close()
+	e.client = nil
+	e.ts = map[string]*Torrent{}
+}
+
+func clientConfig(c Config) *torrent.ClientConfig {
 	config := torrent.NewDefaultClientConfig()
 	config.DataDir = c.DownloadDirectory
 	config.NoUpload = !c.EnableUpload
 	config.Seed = c.EnableSeeding
 	config.ListenPort = c.IncomingPort
-	return torrent.NewClient(config)
+	if c.DisableEncryption {
+		config.HeaderObfuscationPolicy = torrent.HeaderObfuscationPolicy{Preferred: false, RequirePreferred: true}
+	}
+	return config
+}
+
+// newClient is a variable so tests can make client starts fail.
+var newClient = func(c Config) (*torrent.Client, error) {
+	return torrent.NewClient(clientConfig(c))
 }
 
 func (e *Engine) install(c Config, client *torrent.Client) {
@@ -96,30 +139,45 @@ func (e *Engine) restoreLocked() {
 			log.Printf("restore: %s: %s", st.InfoHash, err)
 			continue
 		}
+		// seeded before tracking so the first priority pass already skips them
+		e.upsertTorrent(tt).stopped = toSet(st.StoppedFiles)
 		e.trackLocked(tt, st.Magnet, st.Started, false)
 	}
 }
 
 func (e *Engine) NewMagnet(magnetURI string) error {
-	tt, err := e.client.AddMagnet(magnetURI)
+	spec, err := torrent.TorrentSpecFromMagnetUri(magnetURI)
 	if err != nil {
 		return err
 	}
-	return e.newTorrent(tt, magnetURI)
+	// anacrolix/torrent v1.59 files every v2-only torrent under the zero v1
+	// hash, so a second one would be mistaken for the first
+	if spec.InfoHash.IsZero() {
+		return fmt.Errorf("v2-only magnets (no urn:btih hash) aren't supported yet")
+	}
+	return e.addSpec(spec, magnetURI)
 }
 
 func (e *Engine) NewTorrent(spec *torrent.TorrentSpec) error {
+	return e.addSpec(spec, "")
+}
+
+// addSpec also handles re-adding a torrent the client already has:
+// anacrolix hands back the existing one. A re-add never pauses it, and with
+// AutoStart on it resumes a paused one.
+func (e *Engine) addSpec(spec *torrent.TorrentSpec, magnet string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	if e.client == nil {
+		return errNotRunning
+	}
 	tt, _, err := e.client.AddTorrentSpec(spec)
 	if err != nil {
 		return err
 	}
-	return e.newTorrent(tt, "")
-}
-
-func (e *Engine) newTorrent(tt *torrent.Torrent, magnet string) error {
-	e.mut.Lock()
-	defer e.mut.Unlock()
-	t := e.trackLocked(tt, magnet, true, true)
+	existing, known := e.ts[tt.InfoHash().HexString()]
+	started := e.config.AutoStart || (known && existing.Started)
+	t := e.trackLocked(tt, magnet, started, !known)
 	e.saveLocked(t)
 	return nil
 }
@@ -132,9 +190,15 @@ func (e *Engine) newTorrent(tt *torrent.Torrent, magnet string) error {
 // database already holds what passed.
 func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify bool) *Torrent {
 	t := e.upsertTorrent(tt)
-	t.magnet = magnet
+	if magnet != "" {
+		// a later .torrent add of the same torrent must not erase it
+		t.magnet = magnet
+	}
 	t.Started = started
-	if !started {
+	if started {
+		tt.AllowDataDownload()
+		tt.AllowDataUpload()
+	} else {
 		tt.DisallowDataDownload()
 		tt.DisallowDataUpload()
 	}
@@ -143,11 +207,9 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify
 		// synchronous so a .torrent add is on disk before the API call returns
 		saveMetainfo(st, tt)
 		if verify {
-			verifyInBackground(tt)
+			t.startVerify()
 		}
-		if started {
-			tt.DownloadAll()
-		}
+		applyFileSelection(t)
 		return t
 	}
 	go func() {
@@ -157,35 +219,85 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify
 			return
 		}
 		saveMetainfo(st, tt)
-		if verify {
-			verifyInBackground(tt)
-		}
 		e.mut.Lock()
 		defer e.mut.Unlock()
-		if t.Started && !t.Dropped {
-			tt.DownloadAll()
+		// torrents are only closed under e.mut, so this check holds while
+		// the verification starts
+		select {
+		case <-tt.Closed():
+			return
+		default:
 		}
+		if verify {
+			t.startVerify()
+		}
+		applyFileSelection(t)
 	}()
 	return t
 }
 
-// verifyInBackground hashes every piece against the metainfo; failed pieces
-// become incomplete and download normally. Stops if the torrent is dropped.
-func verifyInBackground(tt *torrent.Torrent) {
+// applyFileSelection sets each file's priority from its selection. Paused
+// torrents get priorities too; DisallowDataDownload is what keeps them idle.
+// A piece shared by a selected and an unselected file is still downloaded.
+func applyFileSelection(t *Torrent) {
+	for _, f := range t.t.Files() {
+		if t.stopped[f.Path()] {
+			f.SetPriority(torrent.PiecePriorityNone)
+		} else {
+			f.Download()
+		}
+	}
+}
+
+func toSet(paths []string) map[string]bool {
+	set := map[string]bool{}
+	for _, p := range paths {
+		set[p] = true
+	}
+	return set
+}
+
+type verification struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// startVerify hashes every piece against the metainfo in the background;
+// failed pieces become incomplete and download normally. Call it with e.mut
+// held, on an open torrent.
+func (t *Torrent) startVerify() {
+	t.stopVerify()
 	ctx, cancel := context.WithCancel(context.Background())
+	v := &verification{cancel: cancel, done: make(chan struct{})}
+	t.verify = v
+	tt := t.t
 	go func() {
-		select {
-		case <-tt.Closed():
-			cancel()
-		case <-ctx.Done():
+		defer close(v.done)
+		// piece by piece rather than VerifyDataContext, so a cancel is seen
+		// before the next piece check can start on a closed torrent
+		for i := 0; i < tt.NumPieces(); i++ {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := tt.Piece(i).VerifyDataContext(ctx); err != nil {
+				if ctx.Err() == nil {
+					log.Printf("verify %s: piece %d: %s", tt.InfoHash().HexString(), i, err)
+				}
+				return
+			}
 		}
 	}()
-	go func() {
-		defer cancel()
-		if err := tt.VerifyDataContext(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("verify %s: %s", tt.InfoHash().HexString(), err)
-		}
-	}()
+}
+
+// stopVerify cancels a running verification and waits for it to return.
+// Every close of the torrent must come after it (see closeClientLocked).
+func (t *Torrent) stopVerify() {
+	if t.verify == nil {
+		return
+	}
+	t.verify.cancel()
+	<-t.verify.done
+	t.verify = nil
 }
 
 func saveMetainfo(st *store, tt *torrent.Torrent) {
@@ -197,7 +309,13 @@ func saveMetainfo(st *store, tt *torrent.Torrent) {
 }
 
 func (e *Engine) saveLocked(t *Torrent) {
-	if err := e.store.save(record{InfoHash: t.InfoHash, Magnet: t.magnet, Started: t.Started}); err != nil {
+	var stopped []string
+	for p := range t.stopped {
+		stopped = append(stopped, p)
+	}
+	sort.Strings(stopped)
+	r := record{InfoHash: t.InfoHash, Magnet: t.magnet, Started: t.Started, StoppedFiles: stopped}
+	if err := e.store.save(r); err != nil {
 		log.Printf("save %s: %s", t.InfoHash, err)
 	}
 }
@@ -247,6 +365,9 @@ func (e *Engine) getTorrent(infohash string) (*Torrent, error) {
 	if err != nil {
 		return nil, err
 	}
+	if e.client == nil {
+		return nil, errNotRunning
+	}
 	t, ok := e.ts[ih.HexString()]
 	if !ok {
 		return t, fmt.Errorf("Missing torrent %x", ih)
@@ -273,16 +394,8 @@ func (e *Engine) StartTorrent(infohash string) error {
 		return fmt.Errorf("Already started")
 	}
 	t.Started = true
-	for _, f := range t.Files {
-		if f != nil {
-			f.Started = true
-		}
-	}
 	t.t.AllowDataDownload()
 	t.t.AllowDataUpload()
-	if t.t.Info() != nil {
-		t.t.DownloadAll()
-	}
 	e.saveLocked(t)
 	return nil
 }
@@ -301,11 +414,6 @@ func (e *Engine) StopTorrent(infohash string) error {
 	t.t.DisallowDataDownload()
 	t.t.DisallowDataUpload()
 	t.Started = false
-	for _, f := range t.Files {
-		if f != nil {
-			f.Started = false
-		}
-	}
 	e.saveLocked(t)
 	return nil
 }
@@ -322,37 +430,53 @@ func (e *Engine) DeleteTorrent(infohash string) error {
 	}
 	t.Dropped = true
 	delete(e.ts, t.InfoHash)
+	t.stopVerify()
 	t.t.Drop()
 	return nil
 }
 
+// StartFile and StopFile select which files of a torrent get downloaded.
+// They don't start or pause the torrent itself, and repeating one is a no-op.
 func (e *Engine) StartFile(infohash, filepath string) error {
-	e.mut.Lock()
-	defer e.mut.Unlock()
-	t, err := e.getOpenTorrent(infohash)
-	if err != nil {
-		return err
-	}
-	var f *File
-	for _, file := range t.Files {
-		if file.Path == filepath {
-			f = file
-			break
-		}
-	}
-	if f == nil {
-		return fmt.Errorf("Missing file %s", filepath)
-	}
-	if f.Started {
-		return fmt.Errorf("Already started")
-	}
-	t.Started = true
-	f.Started = true
-	return nil
+	return e.selectFile(infohash, filepath, true)
 }
 
 func (e *Engine) StopFile(infohash, filepath string) error {
-	return fmt.Errorf("Unsupported")
+	return e.selectFile(infohash, filepath, false)
+}
+
+func (e *Engine) selectFile(infohash, path string, selected bool) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	t, err := e.getTorrent(infohash)
+	if err != nil {
+		return err
+	}
+	var file *torrent.File
+	if t.t.Info() != nil {
+		for _, f := range t.t.Files() {
+			if f.Path() == path {
+				file = f
+				break
+			}
+		}
+	}
+	if file == nil {
+		return fmt.Errorf("Missing file %s", path)
+	}
+	if selected {
+		delete(t.stopped, path)
+		file.Download()
+	} else {
+		if t.stopped == nil {
+			t.stopped = map[string]bool{}
+		}
+		t.stopped[path] = true
+		file.SetPriority(torrent.PiecePriorityNone)
+	}
+	e.upsertTorrent(t.t)
+	e.saveLocked(t)
+	return nil
 }
 
 func str2ih(str string) (metainfo.Hash, error) {

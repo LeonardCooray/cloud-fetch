@@ -125,6 +125,8 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .files { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 13px; }
 .files th, .files td { padding: 5px 6px; border-top: 1px solid var(--border); text-align: left; }
 .files .name { overflow-wrap: anywhere; }
+.files .name label { display: inline-flex; gap: 6px; align-items: baseline; margin: 0; color: inherit; font-size: inherit; cursor: pointer; }
+.files .skipped .name span { color: var(--muted); text-decoration: line-through; }
 .files .size { width: 1%; text-align: right; white-space: nowrap; }
 .files .pct { color: var(--accent); }
 .files .ok { color: var(--ok); vertical-align: -4px; }

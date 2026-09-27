@@ -30,7 +30,7 @@ jobs:
       - name: Build
         run: go build -v -o /dev/null .
       - name: Test
-        run: go test -race ./...
+        run: go test -race -timeout 5m ./... # a hang fails fast instead of at go test's 10m default
       - name: Set up Node
         uses: actions/setup-node@v7
         with:

@@ -1,8 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +37,20 @@ func TestListFilesWalksTreeSkippingHiddenAndSymlinks(t *testing.T) {
 	}
 	if ep := show.Children[0].Children; len(ep) != 1 || ep[0].Name != "e1.mkv" || ep[0].Size != 300 {
 		t.Fatalf("S01 contents wrong: %+v", ep)
+	}
+}
+
+// The UI tells folders from files by Children being a list, so an empty
+// folder must send [] rather than null.
+func TestListFilesSendsEmptyFolderAsFolder(t *testing.T) {
+	s, root := newTestServer(t, "")
+	os.MkdirAll(filepath.Join(root, "downloads", "empty"), 0755)
+
+	b, err := json.Marshal(s.listFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"Name":"empty","Size":0,`) || !strings.Contains(string(b), `"Children":[]`) {
+		t.Fatalf("empty folder not sent as a folder: %s", b)
 	}
 }

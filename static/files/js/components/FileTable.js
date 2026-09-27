@@ -2,15 +2,24 @@ import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { bytes, filename } from "../lib/format.js";
 
-export function FileTable({ files, size }) {
+export function FileTable({ files, size, onSelect }) {
   const list = (files || []).filter(Boolean).slice().sort((a, b) => a.Path.localeCompare(b.Path));
+  const toggle = (f, e) => {
+    const box = e.currentTarget;
+    // the box stays as clicked until the server's next push confirms it
+    onSelect(f.Path, box.checked).catch(() => { box.checked = f.Started; });
+  };
   return html`<table class="files">
     <thead><tr><th>File</th><th class="size">Size</th></tr></thead>
     <tbody>
       ${list.length === 0 && html`<tr><td colspan="2" class="muted">No files</td></tr>`}
-      ${list.map((f) => html`<tr key=${f.Path}>
+      ${list.map((f) => html`<tr key=${f.Path} class=${f.Started ? "" : "skipped"}>
         <td class="name">
-          <span>${filename(f.Path)}</span>
+          <label>
+            <input type="checkbox" checked=${f.Started} aria-label=${"Download " + filename(f.Path)}
+              onChange=${(e) => toggle(f, e)} />
+            <span>${filename(f.Path)}</span>
+          </label>
           ${f.Percent > 0 && f.Percent < 100 && html` <span class="pct">${f.Percent}%</span>
             <div class="progress thin"><div class="bar" style=${{ width: f.Percent + "%" }}></div></div>`}
         </td>

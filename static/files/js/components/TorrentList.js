@@ -33,7 +33,8 @@ function TorrentCard({ t, api, onError }) {
     ${t.Started && html`<div class="status">
       ${bytes(t.Downloaded)} / ${bytes(t.Size)} · ${pct}% · <strong>${bytes(t.DownloadRate)}/s</strong>
     </div>`}
-    ${showFiles && t.Loaded && html`<${FileTable} files=${t.Files} size=${t.Size} />`}
+    ${showFiles && t.Loaded && html`<${FileTable} files=${t.Files} size=${t.Size}
+      onSelect=${(path, on) => api.file(on ? "start" : "stop", t.InfoHash, path).catch((e) => { onError(e); throw e; })} />`}
   </article>`;
 }
 
