@@ -22,7 +22,7 @@
     },
     "result": {
       "infohash": "/td>([a-f0-9]+)</",
-      "tracker": "table.torrent_info tr:nth-child(1) td:nth-child(2)"
+      "tracker": "td:contains('Announce URL:') + td"
     }
   },
   "lt": {
