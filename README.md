@@ -93,7 +93,7 @@ Run once with `--acme-staging` first. Staging certificates aren't trusted by bro
 
 The built-in provider list is [`server/search-config.json`](server/search-config.json). Running instances re-read it from this repo's `master` branch every 30 minutes, so a pushed edit reaches them without a new release. Set `--search-config-url ""` to use only the list compiled into the binary.
 
-Every provider is searched live once a week, and on any pull request that changes the list, by `go test -tags live -run TestLiveSearchProviders ./server`. A new provider needs a query in that test's `liveQueries`.
+Every provider is searched live once a week, and on any pull request that changes the list, by `go test -count=1 -tags live -run TestLiveSearchProviders ./server`. A new provider needs a query in that test's `liveQueries`.
 
 ### Upgrading from Cloud Torrent
 

@@ -29,7 +29,7 @@ var infohashRe = regexp.MustCompile(`^([0-9a-fA-F]{40}|[A-Z2-7]{32})$`)
 // TestLiveSearchProviders runs every built-in provider against the real site
 // and follows its first result the way the UI does (resolveItem, then
 // resolveLookup in static/files/js/lib/search.js) to something addable.
-// Run with: go test -tags live -run TestLiveSearchProviders ./server
+// Run with: go test -count=1 -tags live -run TestLiveSearchProviders ./server
 func TestLiveSearchProviders(t *testing.T) {
 	h := &scraper.Handler{}
 	if err := h.LoadConfig(builtinSearchConfig()); err != nil {

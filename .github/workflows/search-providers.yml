@@ -25,4 +25,4 @@ jobs:
       - name: Vet
         run: go vet -tags live ./server
       - name: Search every provider
-        run: go test -tags live -run TestLiveSearchProviders -v ./server
+        run: go test -count=1 -tags live -run TestLiveSearchProviders -v ./server # -count=1: setup-go caches test results, which would replay a stale pass
