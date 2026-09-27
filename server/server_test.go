@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -179,14 +180,26 @@ func TestUploadRefusesOversizedBody(t *testing.T) {
 	}
 }
 
+// freePort finds a port free for TCP and UDP on every interface, since the
+// torrent client listens on both there. Something else can still take it
+// before it's used, so callers that bind it retry on "address already in use".
 func freePort(t *testing.T) int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	for i := 0; i < 50; i++ {
+		l, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		u, err := net.ListenPacket("udp4", fmt.Sprintf(":%d", port))
+		l.Close()
+		if err == nil {
+			u.Close()
+			return port
+		}
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	t.Fatal("no port free for both TCP and UDP")
+	return 0
 }
 
 func TestConfigFileIsOwnerOnly(t *testing.T) {

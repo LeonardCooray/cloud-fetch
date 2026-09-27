@@ -79,6 +79,14 @@ func (e *Engine) Configure(c Config) error {
 	return err
 }
 
+// Close stops the torrent client. The engine has none until Configure
+// succeeds again.
+func (e *Engine) Close() {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	e.closeClientLocked()
+}
+
 // closeClientLocked stops verifications before closing: anacrolix/torrent
 // v1.59.1 leaks the client lock if a piece check starts on a closed torrent.
 // Afterwards the engine has no client until install gives it one.

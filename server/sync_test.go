@@ -64,6 +64,58 @@ func TestSyncClientsReceiveLaterPushes(t *testing.T) {
 	waitFor("pushed-after-connect")
 }
 
+// running is a Server started with Run in the background.
+type running struct {
+	s    *Server
+	done chan struct{} // closed when Run returns
+	err  error         // Run's result, readable once done is closed
+}
+
+func startRun(s *Server) *running {
+	r := &running{s: s, done: make(chan struct{})}
+	go func() {
+		r.err = s.Run("test")
+		close(r.done)
+	}()
+	return r
+}
+
+// stop closes the listener, waits for Run to return, then closes the torrent
+// client, so the server doesn't keep running into later tests.
+func (r *running) stop(t *testing.T) {
+	r.s.closeListener()
+	select {
+	case <-r.done:
+	case <-time.After(10 * time.Second):
+		t.Log("Run still hadn't returned 10s after its listener closed")
+		return
+	}
+	if r.s.engine != nil {
+		r.s.engine.Close()
+	}
+}
+
+// connectSync keeps trying /sync until Run is listening. Run creates the
+// torrent client first, which can take seconds on a loaded machine; if Run
+// returns instead, its error is the reason.
+func (r *running) connectSync(port int) (*http.Response, error) {
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-r.done:
+			return nil, fmt.Errorf("Run returned: %v", r.err)
+		default:
+		}
+		req, _ := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/sync", port), nil)
+		req.Header.Set("Accept", "text/event-stream")
+		if res, err := http.DefaultClient.Do(req); err == nil {
+			return res, nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("server not accepting /sync after 20s")
+}
+
 // A browser connecting right after startup must get the loaded config, not
 // the zero value the state held before reconfigure ran.
 func TestFirstSyncIncludesLoadedConfig(t *testing.T) {
@@ -71,29 +123,29 @@ func TestFirstSyncIncludesLoadedConfig(t *testing.T) {
 		w.Write(builtinSearchConfig())
 	}))
 	defer search.Close()
-	dir := t.TempDir()
-	cfg := filepath.Join(dir, DefaultConfigName)
-	incoming := freePort(t)
-	os.WriteFile(cfg, []byte(fmt.Sprintf(`{"DownloadDirectory":%q,"IncomingPort":%d}`, filepath.Join(dir, "dl"), incoming)), 0600)
-	port := freePort(t)
-	s := &Server{Title: "t", Port: port, Host: "127.0.0.1", ConfigPath: cfg, SearchConfigURL: search.URL}
-	// widen velox's push throttle so an early push (the search config lands
-	// before reconfigure) holds the next one back while the client connects
-	s.state.Throttle = 2 * time.Second
-	go s.Run("test")
 
 	var res *http.Response
-	for i := 0; i < 200; i++ {
-		req, _ := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/sync", port), nil)
-		req.Header.Set("Accept", "text/event-stream")
-		if r, err := http.DefaultClient.Do(req); err == nil {
-			res = r
-			break
+	var incoming int
+	for attempt := 1; res == nil; attempt++ {
+		dir := t.TempDir()
+		cfg := filepath.Join(dir, DefaultConfigName)
+		incoming = freePort(t)
+		os.WriteFile(cfg, []byte(fmt.Sprintf(`{"DownloadDirectory":%q,"IncomingPort":%d}`, filepath.Join(dir, "dl"), incoming)), 0600)
+		port := freePort(t)
+		s := &Server{Title: "t", Port: port, Host: "127.0.0.1", ConfigPath: cfg, SearchConfigURL: search.URL}
+		// widen velox's push throttle so an early push (the search config lands
+		// before reconfigure) holds the next one back while the client connects
+		s.state.Throttle = 2 * time.Second
+		r := startRun(s)
+		t.Cleanup(func() { r.stop(t) })
+		var err error
+		if res, err = r.connectSync(port); err != nil {
+			// a port freePort found can be taken before Run binds it
+			if strings.Contains(err.Error(), "address already in use") && attempt < 5 {
+				continue
+			}
+			t.Fatal(err)
 		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if res == nil {
-		t.Fatal("server never accepted /sync")
 	}
 	defer res.Body.Close()
 	sc := bufio.NewScanner(res.Body)

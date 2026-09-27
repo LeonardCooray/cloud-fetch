@@ -40,9 +40,6 @@ func (s *Server) fetchSearchConfigLoop() {
 	}
 }
 
-var fetches = 0
-var currentConfig, _ = normalize(builtinSearchConfig())
-
 func (s *Server) fetchSearchConfig() error {
 	client := &http.Client{Timeout: remoteFetchTimeout}
 	resp, err := client.Get(s.SearchConfigURL)
@@ -61,8 +58,7 @@ func (s *Server) fetchSearchConfig() error {
 	if err != nil {
 		return err
 	}
-	fetches++
-	if bytes.Equal(currentConfig, newConfig) {
+	if bytes.Equal(s.searchConfig, newConfig) {
 		return nil //skip
 	}
 	if err := s.scraper.LoadConfig(newConfig); err != nil {
@@ -72,7 +68,7 @@ func (s *Server) fetchSearchConfig() error {
 	s.state.SearchProviders = s.scraper.Config
 	s.state.Unlock()
 	s.state.Push()
-	currentConfig = newConfig
+	s.searchConfig = newConfig
 	log.Printf("Loaded new search providers")
 	return nil
 }
