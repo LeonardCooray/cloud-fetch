@@ -3,7 +3,11 @@
 package server
 
 import (
+	"io"
+	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -45,7 +49,7 @@ func TestLiveSearchProviders(t *testing.T) {
 			// the scraper drops any row missing a configured field, so a
 			// broken selector shows up here as no results at all
 			if len(results) == 0 {
-				t.Fatalf("search %q returned no results", query)
+				t.Fatalf("search %q returned no results (%s)", query, whatCameBack(h.Config[id], query))
 			}
 			first := results[0]
 			if first["name"] == "" {
@@ -79,4 +83,30 @@ func TestLiveSearchProviders(t *testing.T) {
 			}
 		})
 	}
+}
+
+var titleRe = regexp.MustCompile(`(?is)<title>\s*(.*?)\s*</title>`)
+
+// whatCameBack refetches a search page to tell a block (a Cloudflare
+// challenge, a 403) apart from a changed page layout.
+func whatCameBack(e *scraper.Endpoint, query string) string {
+	u := strings.NewReplacer("{{query}}", url.PathEscape(query), "{{page:1}}", "1").Replace(e.URL)
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return err.Error()
+	}
+	for k, v := range e.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	title := ""
+	if m := titleRe.FindSubmatch(b); m != nil {
+		title = string(m[1])
+	}
+	return "GET " + resp.Request.URL.String() + ": " + resp.Status + ", title " + strconv.Quote(title)
 }
