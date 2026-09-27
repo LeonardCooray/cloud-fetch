@@ -2,33 +2,35 @@ name: CI
 on:
   pull_request: {}
   push: {}
-permissions: write-all
+# least privilege by default; release jobs ask for what they need
+permissions:
+  contents: read
 jobs:
   # ================
   # BUILD AND TEST JOB
   # ================
   test:
     name: Build & Test
-    strategy:
-      matrix:
-        # optionally test/build across multiple platforms/Go-versions
-        go-version: ["1.23"]
-        platform: [ubuntu-latest]
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v7
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go-version }}
-          check-latest: true
+          go-version-file: go.mod
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Run gofmt -w on:"; echo "$unformatted"; exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
       - name: Build
         run: go build -v -o /dev/null .
       - name: Test
-        run: go test -v ./...
+        run: go test -race ./...
   # ================
   # RELEASE BINARIES (on push "v*" tag)
   # ================
@@ -37,14 +39,22 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
-      - name: goreleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: actions/checkout@v7
         with:
-          distribution: goreleaser # or 'goreleaser-pro'
-          version: "~> v2" # or 'latest', 'nightly', semver
+          fetch-depth: 0 # goreleaser builds the changelog from history
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: goreleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
           args: release --config .github/goreleaser.yml
         env:
           GITHUB_USER: ${{ github.repository_owner }}
@@ -57,22 +67,25 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -80,7 +93,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
       - name: Build and push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v7
         with:
           file: .github/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/386,linux/arm/v7,linux/arm/v6
