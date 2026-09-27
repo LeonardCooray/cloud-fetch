@@ -24,10 +24,12 @@ function legacyCopy(text, doc) {
   area.style.top = "0";
   area.style.left = "-9999px";
   area.style.opacity = "0";
+  area.style.fontSize = "12pt"; // smaller text makes iOS zoom on focus
   doc.body.appendChild(area);
   try {
     area.focus();
     area.select();
+    area.setSelectionRange(0, text.length); // iOS ignores select() on a readonly field
     return doc.execCommand("copy") === true;
   } catch {
     return false;

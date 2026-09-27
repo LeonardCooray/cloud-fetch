@@ -77,3 +77,24 @@ test("statusLine for complete, paused and loading torrents", () => {
 test("statusLine never shows 100% for an unfinished torrent", () => {
   assert.equal(statusLine(t({ Percent: 99.99, Size: 100, Downloaded: 99 })).main, "99 B of 100 B · 99%");
 });
+
+const files = (...fs) => fs.map(([Started, Percent, Size]) => ({ Started, Percent, Size }));
+
+test("a torrent is complete when every selected file is, even with files left unticked", () => {
+  const Files = files([true, 100, 12 * MB], [false, 0, 100 * MB]);
+  assert.equal(torrentStatus(t({ Started: true, Percent: 10.7, Files })), "seeding");
+  assert.equal(torrentStatus(t({ Started: false, Percent: 10.7, Files })), "done");
+  assert.deepEqual(statusLine(t({ Started: false, Percent: 10.7, Size: 112 * MB, Files })),
+    { main: "12 MB · complete", rate: null, note: null });
+});
+
+test("with nothing selected, completeness falls back to the torrent's percent", () => {
+  const Files = files([false, 0, 12 * MB]);
+  assert.equal(torrentStatus(t({ Started: true, Percent: 0, Files })), "downloading");
+});
+
+test("eta only counts the selected files still to download", () => {
+  const Files = files([true, 50, 1200 * MB], [false, 0, 10000 * MB]);
+  const torrent = t({ Size: 11200 * MB, Downloaded: 600 * MB, Percent: 5.35, DownloadRate: MB, Files });
+  assert.equal(eta(torrent), "about 10 min left");
+});

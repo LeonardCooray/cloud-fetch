@@ -10,9 +10,25 @@ export const STATUS_LABELS = {
 
 // torrentStatus derives a torrent's state from the fields the server already
 // sends; a complete torrent that is still started is seeding.
+// selection sums the files ticked for download. Percent counts unticked
+// files too, so a torrent whose selected files are all complete is finished
+// even though Percent never reaches 100. Null when nothing is selected.
+function selection(t) {
+  const picked = (t.Files || []).filter((f) => f && f.Started);
+  if (picked.length === 0) return null;
+  let size = 0;
+  let left = 0;
+  for (const f of picked) {
+    size += f.Size || 0;
+    left += (f.Size || 0) * (1 - Math.min(f.Percent || 0, 100) / 100);
+  }
+  return { size, left, complete: picked.every((f) => (f.Percent || 0) >= 100) };
+}
+
 export function torrentStatus(t) {
   if (!t || !t.Loaded) return "loading";
-  const complete = (t.Percent || 0) >= 100;
+  const picked = selection(t);
+  const complete = picked ? picked.complete : (t.Percent || 0) >= 100;
   if (t.Started) return complete ? "seeding" : "downloading";
   return complete ? "done" : "paused";
 }
@@ -20,7 +36,8 @@ export function torrentStatus(t) {
 export function eta(t) {
   if (torrentStatus(t) !== "downloading") return null;
   const rate = t.DownloadRate || 0;
-  const left = (t.Size || 0) - (t.Downloaded || 0);
+  const picked = selection(t);
+  const left = picked ? picked.left : (t.Size || 0) - (t.Downloaded || 0);
   if (!(rate > 0) || !(left > 0)) return null;
   const seconds = left / rate;
   if (seconds < 60) return "less than a minute left";
@@ -38,7 +55,10 @@ export function eta(t) {
 export function statusLine(t) {
   const status = torrentStatus(t);
   if (status === "loading") return { main: "", rate: null, note: null };
-  if (status === "seeding" || status === "done") return { main: `${bytes(t.Size)} · complete`, rate: null, note: null };
+  if (status === "seeding" || status === "done") {
+    const picked = selection(t);
+    return { main: `${bytes(picked ? picked.size : t.Size)} · complete`, rate: null, note: null };
+  }
   const main = `${bytes(t.Downloaded)} of ${bytes(t.Size)} · ${Math.floor(t.Percent || 0)}%`;
   if (status === "paused") return { main, rate: null, note: null };
   const rate = t.DownloadRate || 0;

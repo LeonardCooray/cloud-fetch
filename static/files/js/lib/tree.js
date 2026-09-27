@@ -55,13 +55,21 @@ export function sortTorrents(torrents) {
 
 // absoluteHref is what Copy link puts on the clipboard: the same link the
 // row shows, made absolute so IDM and VLC can use it outside the page.
+// Credentials in the page URL (a bookmarked http://user:pass@host/) are
+// dropped so a password never reaches the clipboard.
 export function absoluteHref(path, base) {
-  return new URL(downloadHref(path), base).href;
+  const url = new URL(downloadHref(path), base);
+  url.username = "";
+  url.password = "";
+  return url.href;
 }
 
-// finishedFiles lists the files Copy all should copy: every file under node
-// whose link is shown, i.e. not one a started torrent is still writing.
+// finishedFiles lists the files the copy buttons may copy: complete files
+// only, so a paused torrent's half-written file (or a stray .part) never
+// ends up in IDM.
 export function finishedFiles(node, path, torrents) {
-  if (!isDir(node)) return isDownloading(findTorrentFile(torrents, path)) ? [] : [path];
-  return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), torrents));
+  if (isDir(node)) return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), torrents));
+  if (path.endsWith(".part")) return [];
+  const match = findTorrentFile(torrents, path);
+  return !match || match.file.Percent >= 100 ? [path] : [];
 }

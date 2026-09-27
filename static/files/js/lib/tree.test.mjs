@@ -105,9 +105,14 @@ test("finishedFiles skips files a started torrent is still writing", () => {
   assert.deepEqual(finishedFiles(tree, "Show", torrents), ["Show/E01.mkv", "Show/Extras/b.txt"]);
 });
 
-test("finishedFiles keeps a paused torrent's partial files, as their links show", () => {
+test("finishedFiles leaves out a paused torrent's partial files", () => {
   const torrents = torrent([{ Path: "Show/E02.mkv", Percent: 50 }], { Started: false });
-  assert.deepEqual(finishedFiles(tree, "Show", torrents), ["Show/E01.mkv", "Show/Extras/b.txt", "Show/E02.mkv"]);
+  assert.deepEqual(finishedFiles(tree, "Show", torrents), ["Show/E01.mkv", "Show/Extras/b.txt"]);
+});
+
+test("finishedFiles leaves out any .part file, even with no torrent left", () => {
+  const partTree = { Name: "Show", Children: [{ Name: "E01.mkv", Children: null }, { Name: "E02.mkv.part", Children: null }] };
+  assert.deepEqual(finishedFiles(partTree, "Show", {}), ["Show/E01.mkv"]);
 });
 
 test("finishedFiles on a single file", () => {
@@ -132,4 +137,8 @@ test("finishedFiles skips a .part file a started torrent is still writing", () =
   const partTree = { Name: "Show", Children: [{ Name: "E01.mkv", Children: null }, { Name: "E02.mkv.part", Children: null }] };
   const torrents = torrent([{ Path: "Show/E01.mkv", Percent: 100 }, { Path: "Show/E02.mkv", Percent: 50 }]);
   assert.deepEqual(finishedFiles(partTree, "Show", torrents), ["Show/E01.mkv"]);
+});
+
+test("absoluteHref never carries credentials from the page URL", () => {
+  assert.equal(absoluteHref("a.iso", "http://leo:secret@h:3000/"), "http://h:3000/download/a.iso");
 });

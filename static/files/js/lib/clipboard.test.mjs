@@ -18,11 +18,13 @@ function fakeDoc(exec = () => true) {
         setAttribute(k, v) { this.attrs[k] = v; },
         focus() { doc.activeElement = this; },
         select() { this.selected = true; },
+        setSelectionRange(a, b) { this.range = [a, b]; },
       };
     },
     execCommand(cmd) {
       const area = doc.body.children[0];
       calls.push({ cmd, tag: area && area.tag, value: area && area.value, selected: area && area.selected });
+      doc.lastArea = area;
       return exec();
     },
   };
@@ -84,4 +86,11 @@ test("a throwing execCommand asks for a manual copy", async () => {
 
 test("no document at all asks for a manual copy", async () => {
   assert.equal(await copyText("x", { secure: false, clipboard: undefined, document: undefined }), "manual");
+});
+
+test("the fallback selects the whole text the way iOS needs", async () => {
+  const { doc } = fakeDoc();
+  assert.equal(await copyText("abcdef", { secure: false, clipboard: undefined, document: doc }), "copied");
+  assert.deepEqual(doc.lastArea.range, [0, 6]);
+  assert.equal(doc.lastArea.style.fontSize, "12pt", "no zoom-on-focus on iOS");
 });

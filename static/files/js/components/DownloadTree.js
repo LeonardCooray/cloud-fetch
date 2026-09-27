@@ -30,7 +30,7 @@ function TreeNode({ node, path, torrents, api, onError }) {
   const kind = dir ? null : previewKind(path);
   const downloading = !dir && isDownloading(findTorrentFile(torrents, path));
   const href = downloadHref(path);
-  const finished = dir ? finishedFiles(node, path, torrents) : null;
+  const finished = finishedFiles(node, path, torrents);
   const linksOf = (paths) => paths.map((p) => absoluteHref(p, window.location.href)).join("\n");
 
   useEffect(() => {
@@ -75,7 +75,7 @@ function TreeNode({ node, path, torrents, api, onError }) {
               getText=${() => linksOf(finishedFiles(node, path, torrents))}
               label=${"Copy all links in " + node.Name}
               done=${(text) => "Copied " + text.split("\n").length} />`
-          : html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
+          : finished.length > 0 && html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
               label=${"Copy link to " + node.Name} done="Copied" />`}
         ${kind && html`<button type="button" class=${"icon-btn" + (preview ? " on" : "")} aria-pressed=${preview}
           aria-label=${(preview ? "Hide preview of " : "Preview ") + node.Name} onClick=${() => setPreview(!preview)}>

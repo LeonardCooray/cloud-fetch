@@ -101,3 +101,17 @@ test("download rows are comfortable to tap on a phone", async ({ page, app }) =>
   expect((await row(page, "E01.mkv").boundingBox()).height).toBeGreaterThanOrEqual(40);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("pausing keeps half-written files out of Copy link and Copy all", async ({ page, app }) => {
+  await grantClipboard(page, app);
+  await mixedShow(app);
+  const card = page.getByRole("article", { name: "Mixed Show" });
+  await expect(card.locator(".badge")).toHaveText("Downloading");
+  await card.getByRole("button", { name: "Pause" }).click();
+  await expect(card.locator(".badge")).toHaveText("Paused");
+  await expect(row(page, "E02.mkv")).toBeVisible();
+  await expect(row(page, "E02.mkv").getByRole("button", { name: /^Copy/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Copy all links in Mixed Show" }).click();
+  await expect(page.getByRole("button", { name: "Copied 1" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${app.url}download/Mixed%20Show/E01.mkv`);
+});
