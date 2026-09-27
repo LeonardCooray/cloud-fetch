@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { html } from "../html.js";
 import { Icon } from "../icons.js";
-import { classify } from "../lib/omni.js";
+import { classify, droppedText } from "../lib/omni.js";
 import { parseMagnet, buildMagnet } from "../lib/magnet.js";
 import { providerList, pickProvider, normalizeResults, resolveItem, resolveLookup } from "../lib/search.js";
 import { MagnetEditor } from "./MagnetEditor.js";
@@ -15,7 +15,7 @@ const store = {
     try { localStorage.setItem(k, v); } catch { /* storage unavailable (private mode) */ }
   },
 };
-const BLANK = { name: "", infohash: "", trackers: [] };
+const BLANK = { name: "", infohash: "", trackers: [], extra: [] };
 
 export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) {
   const [text, setText] = useState(() => store.get("tcOmni"));
@@ -27,7 +27,8 @@ export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) 
   const [inputError, setInputError] = useState(null);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef(null);
-  const latestQuery = useRef("");
+  const latestSearch = useRef("");
+  const onDrop = useRef(null);
 
   const mode = classify(text);
   const query = text.trim();
@@ -35,7 +36,8 @@ export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) 
   const provider = pickProvider(list, stored);
   const magnet = mode === "magnet" ? parseMagnet(text) : null;
   const noResults = !hasMore && results.length === 0;
-  latestQuery.current = query;
+  const searchKey = provider + "\n" + query;
+  latestSearch.current = searchKey;
 
   useEffect(() => store.set("tcOmni", text), [text]);
   useEffect(() => {
@@ -52,11 +54,11 @@ export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) 
 
   const search = async () => {
     if (!provider || searching || !hasMore) return;
-    const q = query;
+    const key = searchKey;
     setSearching(true);
     try {
-      const res = await api.search(provider, q, page);
-      if (latestQuery.current !== q) return; // the person typed a new query meanwhile
+      const res = await api.search(provider, query, page);
+      if (latestSearch.current !== key) return; // a new query or provider meanwhile
       const found = Array.isArray(res) ? res : res ? [res] : [];
       if (found.length === 0) {
         setHasMore(false);
@@ -108,17 +110,41 @@ export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) 
     }
   };
 
+  // drops land anywhere on the page: .torrent files are uploaded, a dragged
+  // link or text goes into the bar
+  onDrop.current = (dt) => {
+    const files = Array.from((dt && dt.files) || []);
+    if (files.some((f) => f.name.toLowerCase().endsWith(".torrent"))) return upload(files);
+    const dropped = droppedText(dt);
+    if (dropped) return setText(dropped);
+    if (files.length) upload(files);
+  };
+  useEffect(() => {
+    let depth = 0; // dragenter/leave fire for every element crossed
+    const enter = (e) => { e.preventDefault(); depth++; setDragging(true); };
+    const over = (e) => e.preventDefault();
+    const leave = () => { depth = Math.max(0, depth - 1); if (depth === 0) setDragging(false); };
+    const drop = (e) => {
+      depth = 0;
+      setDragging(false);
+      // text dropped on another field (a tracker, a setting) goes into that field
+      const field = e.target.closest && e.target.closest("input, textarea");
+      const files = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length;
+      if (field && !field.classList.contains("omni-input") && !files) return;
+      e.preventDefault();
+      onDrop.current(e.dataTransfer);
+    };
+    const on = [["dragenter", enter], ["dragover", over], ["dragleave", leave], ["drop", drop]];
+    for (const [t, fn] of on) document.addEventListener(t, fn);
+    return () => { for (const [t, fn] of on) document.removeEventListener(t, fn); };
+  }, []);
+
   const icon = mode === "search" ? "search" : mode === "empty" ? "upload" : "magnet";
   const inlineError = inputError || (magnet && magnet.error);
 
   return html`<section class="omni">
     ${editorOpen && html`<${MagnetEditor} magnet=${magnet || BLANK} onChange=${(m) => setText(buildMagnet(m))} />`}
-    <div
-      class=${"omni-bar" + (dragging ? " drag" : "")}
-      onDragOver=${(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave=${() => setDragging(false)}
-      onDrop=${(e) => { e.preventDefault(); setDragging(false); upload(e.dataTransfer && e.dataTransfer.files); }}
-    >
+    <div class=${"omni-bar" + (dragging ? " drag" : "")}>
       <input class="omni-input" type="text" aria-label="Search, magnet link or torrent URL"
         placeholder="Enter search query, magnet URI, torrent URL or drop a torrent file here"
         value=${text} onInput=${(e) => setText(e.currentTarget.value)}

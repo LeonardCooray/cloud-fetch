@@ -12,8 +12,11 @@ export function installSpaceToggle(doc = document, win = window) {
       const r = media.getBoundingClientRect();
       const inView = (r.top >= 0 && r.top <= height) || (r.bottom >= 0 && r.bottom <= height);
       if (!inView) continue;
-      if (media.paused) media.play();
-      else media.pause();
+      if (media.paused) {
+        // autoplay rules can refuse; the player's own button still works
+        const p = media.play();
+        if (p && p.catch) p.catch(() => {});
+      } else media.pause();
       e.preventDefault();
       return;
     }

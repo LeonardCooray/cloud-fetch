@@ -6,10 +6,14 @@ import {
   childPath, downloadHref, fileIcon, findTorrentFile, isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
 
+// Players take focus when they open, so Space controls them rather than
+// pressing the preview toggle that was just clicked.
 function Preview({ kind, src }) {
-  if (kind === "audio") return html`<audio class="preview" controls src=${src}></audio>`;
+  const player = useRef(null);
+  useEffect(() => { if (player.current) player.current.focus(); }, []);
+  if (kind === "audio") return html`<audio ref=${player} class="preview" controls src=${src}></audio>`;
   if (kind === "image") return html`<img class="preview" src=${src} alt="" />`;
-  return html`<video class="preview" controls autoplay src=${src}></video>`;
+  return html`<video ref=${player} class="preview" controls autoplay playsinline src=${src}></video>`;
 }
 
 function TreeNode({ node, path, torrents, api, onError }) {
@@ -19,6 +23,8 @@ function TreeNode({ node, path, torrents, api, onError }) {
   const [deleting, setDeleting] = useState(false);
   const [preview, setPreview] = useState(false);
   const armedAt = useRef(0);
+  const settle = useRef(0);
+  useEffect(() => () => clearTimeout(settle.current), []);
   const kind = dir ? null : previewKind(path);
   const downloading = !dir && isDownloading(findTorrentFile(torrents, path));
   const href = downloadHref(path);
@@ -40,6 +46,9 @@ function TreeNode({ node, path, torrents, api, onError }) {
     setDeleting(true);
     try {
       await api.deleteDownload(path);
+      // the next listing normally removes this row; if the file is back by
+      // then (a torrent still writing it), show it as a file again
+      settle.current = setTimeout(() => { setDeleting(false); setConfirm(false); }, 3000);
     } catch (e) {
       setDeleting(false);
       setConfirm(false);
