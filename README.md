@@ -105,6 +105,13 @@ The web UI is plain ES modules in `static/files/`, with Preact and htm vendored 
 node --test "static/files/js/**/*.test.mjs"
 ```
 
+Browser tests live in `e2e/` (Playwright, dev-only; nothing there is embedded or needed by `go install`). They build the binary and run it offline against temporary folders:
+
+``` sh
+cd e2e && npm ci && npx playwright install chromium
+npx playwright test
+```
+
 ### Credits
 
 Cloud Fetch is based on [jpillora/cloud-torrent](https://github.com/jpillora/cloud-torrent), Copyright (c) 2017 Jaime Pillora, itself a rewrite of [node-torrent-cloud](https://github.com/jpillora/node-torrent-cloud). The torrent engine is [anacrolix/torrent](https://github.com/anacrolix/torrent).

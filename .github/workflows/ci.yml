@@ -38,6 +38,32 @@ jobs:
       - name: UI unit tests
         run: node --test "static/files/js/**/*.test.mjs"
   # ================
+  # BROWSER TESTS
+  # ================
+  e2e:
+    name: Browser tests
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Browser tests
+        working-directory: e2e
+        run: npx playwright test
+  # ================
   # RELEASE BINARIES (on push "v*" tag)
   # ================
   release_binaries:
