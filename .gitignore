@@ -1,5 +1,7 @@
 downloads
+cloud-fetch.json
 cloud-torrent.json
+certs/
 tmp/
 dev.sh
 dist/

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -13,7 +12,7 @@ import (
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 
-	"github.com/jpillora/cloud-torrent/engine"
+	"github.com/LeonardCooray/cloud-fetch/engine"
 )
 
 const maxTorrentBytes = 10 << 20
@@ -21,7 +20,7 @@ const maxTorrentBytes = 10 << 20
 var remoteFetchTimeout = 30 * time.Second
 
 func readCapped(r io.Reader) ([]byte, error) {
-	b, err := ioutil.ReadAll(io.LimitReader(r, maxTorrentBytes+1))
+	b, err := io.ReadAll(io.LimitReader(r, maxTorrentBytes+1))
 	if err != nil {
 		return nil, err
 	}

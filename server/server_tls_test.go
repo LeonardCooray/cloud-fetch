@@ -40,7 +40,7 @@ func TestCertManagerAcceptsConfiguredDomainWithPort(t *testing.T) {
 
 func TestCertManagerCachesNextToConfigByDefault(t *testing.T) {
 	dir := t.TempDir()
-	s := &Server{Domain: "fetch.example.com", ConfigPath: filepath.Join(dir, "cloud-torrent.json")}
+	s := &Server{Domain: "fetch.example.com", ConfigPath: filepath.Join(dir, DefaultConfigName)}
 	m, err := s.certManager()
 	if err != nil {
 		t.Fatal(err)
