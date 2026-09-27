@@ -2,6 +2,7 @@ package server
 
 import (
 	"runtime"
+	"sync"
 
 	velox "github.com/jpillora/velox/go"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -22,28 +23,32 @@ type stats struct {
 	pusher velox.Pusher
 }
 
-func (s *stats) loadStats(diskDir string) {
+// loadStats gathers fresh numbers, then swaps them in under l (the state
+// lock velox marshals under), so a push never reads a half-written struct.
+func (s *stats) loadStats(diskDir string, l sync.Locker) {
+	next := stats{Set: true, pusher: s.pusher}
 	//count cpu cycles between last count
 	if percents, err := cpu.Percent(0, false); err == nil && len(percents) == 1 {
-		s.CPU = percents[0]
+		next.CPU = percents[0]
 	}
 	//count disk usage
 	if stat, err := disk.Usage(diskDir); err == nil {
-		s.DiskUsed = int64(stat.Used)
-		s.DiskTotal = int64(stat.Total)
+		next.DiskUsed = int64(stat.Used)
+		next.DiskTotal = int64(stat.Total)
 	}
 	//count memory usage
 	if stat, err := mem.VirtualMemory(); err == nil {
-		s.MemoryUsed = int64(stat.Used)
-		s.MemoryTotal = int64(stat.Total)
+		next.MemoryUsed = int64(stat.Used)
+		next.MemoryTotal = int64(stat.Total)
 	}
 	//count total bytes allocated by the go runtime
 	memStats := runtime.MemStats{}
 	runtime.ReadMemStats(&memStats)
-	s.GoMemory = int64(memStats.Alloc)
+	next.GoMemory = int64(memStats.Alloc)
 	//count current number of goroutines
-	s.GoRoutines = runtime.NumGoroutine()
-	//done
-	s.Set = true
+	next.GoRoutines = runtime.NumGoroutine()
+	l.Lock()
+	*s = next
+	l.Unlock()
 	s.pusher.Push()
 }
