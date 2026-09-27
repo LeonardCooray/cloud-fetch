@@ -1,20 +1,46 @@
 :root {
+  color-scheme: light dark;
   --bg: #f6f7f9;
-  --surface: #fff;
+  --surface: #ffffff;
   --text: #1d2330;
   --muted: #5f6b7a;
-  --faint: #8a94a3;
+  --faint: #646f80;
   --border: #dde2e8;
-  --accent: #1f6fd1;
+  --accent: #1a64c4;
   --accent-bg: #e8f1fc;
-  --ok: #1f8a4c;
+  --on-accent: #ffffff;
+  --ok: #1a7a43;
+  --ok-bg: #e6f4ec;
   --danger: #c23b3b;
   --danger-bg: #fbecec;
+  --warn: #8a5a00;
+  --warn-bg: #fbf1dc;
+  --overlay: rgba(255, 255, 255, 0.75);
   --radius: 8px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1217;
+    --surface: #171b22;
+    --text: #e6e9ef;
+    --muted: #a3adbb;
+    --faint: #8e98a7;
+    --border: #2a313c;
+    --accent: #6aa8f7;
+    --accent-bg: #15263d;
+    --on-accent: #0f1217;
+    --ok: #4cc27f;
+    --ok-bg: #12291c;
+    --danger: #f07b7b;
+    --danger-bg: #2e1616;
+    --warn: #e0a93a;
+    --warn-bg: #2d2310;
+    --overlay: rgba(15, 18, 23, 0.75);
+  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -30,7 +56,7 @@ button, select {
 }
 button:hover:not(:disabled) { border-color: var(--faint); }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.go { color: var(--ok); border-color: var(--ok); }
 button.danger { color: var(--danger); border-color: var(--danger); }
 button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
@@ -116,7 +142,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .torrent .buttons { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
 .overlay {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
-  border-radius: var(--radius); background: rgba(255, 255, 255, 0.75); color: var(--muted); pointer-events: none;
+  border-radius: var(--radius); background: var(--overlay); color: var(--muted); pointer-events: none;
 }
 .progress { height: 6px; margin: 10px 0 6px; overflow: hidden; border-radius: 3px; background: var(--bg); }
 .progress.thin { height: 3px; margin: 4px 0 0; }
