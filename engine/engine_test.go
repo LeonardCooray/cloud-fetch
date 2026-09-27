@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anacrolix/torrent"
@@ -21,7 +22,9 @@ func freePort(t *testing.T) int {
 			t.Fatal(err)
 		}
 		port := l.Addr().(*net.TCPAddr).Port
-		u, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
+		// udp4 as the client binds it: on macOS a dual-stack "udp" probe
+		// succeeds even while a udp4 socket holds the port
+		u, err := net.ListenPacket("udp4", fmt.Sprintf(":%d", port))
 		l.Close()
 		if err == nil {
 			u.Close()
@@ -30,6 +33,21 @@ func freePort(t *testing.T) int {
 	}
 	t.Fatal("no port free for both TCP and UDP")
 	return 0
+}
+
+// configureOnFreePort retries on a bind collision: between freePort's check
+// and the client's bind, another socket (an outgoing tracker or DHT one)
+// can take the port.
+func configureOnFreePort(t *testing.T, e *Engine, c Config) error {
+	t.Helper()
+	var err error
+	for i := 0; i < 5; i++ {
+		c.IncomingPort = freePort(t)
+		if err = e.Configure(c); err == nil || !strings.Contains(err.Error(), "address already in use") {
+			return err
+		}
+	}
+	return err
 }
 
 // startEngine stands in for a process start: a fresh Engine over dir, with
@@ -139,7 +157,7 @@ func TestReconfigureKeepsTorrents(t *testing.T) {
 	e := startEngine(t, dir)
 	ih := addTestTorrent(t, e)
 
-	if err := e.Configure(Config{DownloadDirectory: dir, IncomingPort: freePort(t)}); err != nil {
+	if err := configureOnFreePort(t, e, Config{DownloadDirectory: dir}); err != nil {
 		t.Fatal(err)
 	}
 	torrentState(t, e, ih)
@@ -156,7 +174,7 @@ func TestChangingDownloadDirDropsTorrentsFromOldClient(t *testing.T) {
 	e := startEngine(t, t.TempDir())
 	ih := addTestTorrent(t, e)
 
-	if err := e.Configure(Config{DownloadDirectory: t.TempDir(), IncomingPort: freePort(t)}); err != nil {
+	if err := configureOnFreePort(t, e, Config{DownloadDirectory: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := e.GetTorrents()[ih]; ok {
