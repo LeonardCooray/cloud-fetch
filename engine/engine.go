@@ -3,7 +3,7 @@ package engine
 import (
 	"encoding/hex"
 	"fmt"
-	"os"
+	"log"
 	"path/filepath"
 	"sync"
 	"time"
@@ -14,11 +14,11 @@ import (
 
 // the Engine Cloud Torrent engine, backed by anacrolix/torrent
 type Engine struct {
-	mut      sync.Mutex
-	cacheDir string
-	client   *torrent.Client
-	config   Config
-	ts       map[string]*Torrent
+	mut    sync.Mutex
+	client *torrent.Client
+	config Config
+	store  *store
+	ts     map[string]*Torrent
 }
 
 func New() *Engine {
@@ -51,10 +51,33 @@ func (e *Engine) Configure(c Config) error {
 	e.mut.Lock()
 	e.config = c
 	e.client = client
+	// the old client's torrents are closed; the store is the source of truth
+	e.ts = map[string]*Torrent{}
+	e.store = newStore(filepath.Join(c.DownloadDirectory, storeDirName))
+	e.restoreLocked()
 	e.mut.Unlock()
-	//reset
-	e.GetTorrents()
 	return nil
+}
+
+func (e *Engine) restoreLocked() {
+	saved, errs := e.store.load()
+	for _, err := range errs {
+		log.Printf("restore: skipping %s", err)
+	}
+	for _, st := range saved {
+		var tt *torrent.Torrent
+		var err error
+		if st.Metainfo != nil {
+			tt, err = e.client.AddTorrent(st.Metainfo)
+		} else {
+			tt, err = e.client.AddMagnet(st.Magnet)
+		}
+		if err != nil {
+			log.Printf("restore: %s: %s", st.InfoHash, err)
+			continue
+		}
+		e.trackLocked(tt, st.Magnet, st.Started)
+	}
 }
 
 func (e *Engine) NewMagnet(magnetURI string) error {
@@ -62,7 +85,7 @@ func (e *Engine) NewMagnet(magnetURI string) error {
 	if err != nil {
 		return err
 	}
-	return e.newTorrent(tt)
+	return e.newTorrent(tt, magnetURI)
 }
 
 func (e *Engine) NewTorrent(spec *torrent.TorrentSpec) error {
@@ -70,16 +93,64 @@ func (e *Engine) NewTorrent(spec *torrent.TorrentSpec) error {
 	if err != nil {
 		return err
 	}
-	return e.newTorrent(tt)
+	return e.newTorrent(tt, "")
 }
 
-func (e *Engine) newTorrent(tt *torrent.Torrent) error {
-	t := e.upsertTorrent(tt)
-	go func() {
-		<-t.t.GotInfo()
-		e.StartTorrent(t.InfoHash)
-	}()
+func (e *Engine) newTorrent(tt *torrent.Torrent, magnet string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	t := e.trackLocked(tt, magnet, true)
+	e.saveLocked(t)
 	return nil
+}
+
+// trackLocked registers tt and applies its started state. Metadata may still
+// be unknown (magnets), so the .torrent save and DownloadAll wait for GotInfo.
+func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started bool) *Torrent {
+	t := e.upsertTorrent(tt)
+	t.magnet = magnet
+	t.Started = started
+	if !started {
+		tt.DisallowDataDownload()
+		tt.DisallowDataUpload()
+	}
+	st := e.store
+	if tt.Info() != nil {
+		// synchronous so a .torrent add is on disk before the API call returns
+		saveMetainfo(st, tt)
+		if started {
+			tt.DownloadAll()
+		}
+		return t
+	}
+	go func() {
+		select {
+		case <-tt.GotInfo():
+		case <-tt.Closed():
+			return
+		}
+		saveMetainfo(st, tt)
+		e.mut.Lock()
+		defer e.mut.Unlock()
+		if t.Started && !t.Dropped {
+			tt.DownloadAll()
+		}
+	}()
+	return t
+}
+
+func saveMetainfo(st *store, tt *torrent.Torrent) {
+	ih := tt.InfoHash().HexString()
+	mi := tt.Metainfo()
+	if err := st.saveMetainfo(ih, &mi); err != nil {
+		log.Printf("save %s: %s", ih, err)
+	}
+}
+
+func (e *Engine) saveLocked(t *Torrent) {
+	if err := e.store.save(record{InfoHash: t.InfoHash, Magnet: t.magnet, Started: t.Started}); err != nil {
+		log.Printf("save %s: %s", t.InfoHash, err)
+	}
 }
 
 // GetTorrents moves torrents out of the anacrolix/torrent
@@ -130,6 +201,8 @@ func (e *Engine) getOpenTorrent(infohash string) (*Torrent, error) {
 }
 
 func (e *Engine) StartTorrent(infohash string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
 	t, err := e.getOpenTorrent(infohash)
 	if err != nil {
 		return err
@@ -143,13 +216,19 @@ func (e *Engine) StartTorrent(infohash string) error {
 			f.Started = true
 		}
 	}
+	t.t.AllowDataDownload()
+	t.t.AllowDataUpload()
 	if t.t.Info() != nil {
 		t.t.DownloadAll()
 	}
+	e.saveLocked(t)
 	return nil
 }
 
+// StopTorrent pauses rather than drops, so the torrent can be started again.
 func (e *Engine) StopTorrent(infohash string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
 	t, err := e.getTorrent(infohash)
 	if err != nil {
 		return err
@@ -157,32 +236,37 @@ func (e *Engine) StopTorrent(infohash string) error {
 	if !t.Started {
 		return fmt.Errorf("Already stopped")
 	}
-	//there is no stop - kill underlying torrent
-	t.t.Drop()
+	t.t.DisallowDataDownload()
+	t.t.DisallowDataUpload()
 	t.Started = false
 	for _, f := range t.Files {
 		if f != nil {
 			f.Started = false
 		}
 	}
+	e.saveLocked(t)
 	return nil
 }
 
 func (e *Engine) DeleteTorrent(infohash string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
 	t, err := e.getTorrent(infohash)
 	if err != nil {
 		return err
 	}
-	os.Remove(filepath.Join(e.cacheDir, infohash+".torrent"))
-	delete(e.ts, t.InfoHash)
-	ih, _ := str2ih(infohash)
-	if tt, ok := e.client.Torrent(ih); ok {
-		tt.Drop()
+	if err := e.store.remove(t.InfoHash); err != nil {
+		log.Printf("delete %s: %s", t.InfoHash, err)
 	}
+	t.Dropped = true
+	delete(e.ts, t.InfoHash)
+	t.t.Drop()
 	return nil
 }
 
 func (e *Engine) StartFile(infohash, filepath string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
 	t, err := e.getOpenTorrent(infohash)
 	if err != nil {
 		return err

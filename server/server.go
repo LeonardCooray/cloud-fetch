@@ -23,6 +23,7 @@ import (
 	"github.com/jpillora/scraper/scraper"
 	"github.com/jpillora/velox"
 	"github.com/skratchdot/open-golang/open"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 //Server is the "State" portion of the diagram
@@ -30,13 +31,19 @@ type Server struct {
 	//config
 	Title      string `help:"Title of this instance" env:"TITLE"`
 	Port       int    `help:"Listening port" env:"PORT"`
-	Host       string `help:"Listening interface (default all)"`
+	Host       string `help:"Listening interface (default: all with --auth, localhost only without)"`
 	Auth       string `help:"Optional basic auth in form 'user:password'" env:"AUTH"`
 	ConfigPath string `help:"Configuration file path"`
 	KeyPath    string `help:"TLS Key file path"`
 	CertPath   string `help:"TLS Certicate file path" short:"r"`
 	Log        bool   `help:"Enable request logging"`
 	Open       bool   `help:"Open now with your default browser"`
+	//let's encrypt
+	Domain        string `help:"Serve HTTPS with a free, auto-renewing Let's Encrypt certificate for this domain (needs --http-port reachable from the internet)" env:"DOMAIN" opts:"short=-"`
+	HTTPPort      int    `help:"Plain HTTP port for Let's Encrypt checks and the redirect to HTTPS (only with --domain)" opts:"name=http-port,short=-"`
+	CertCache     string `help:"Where to keep Let's Encrypt certificates (default: certs/ next to the config file)" opts:"short=-"`
+	ACMEStaging   bool   `help:"Use Let's Encrypt's staging server (untrusted test certificates, generous rate limits)" opts:"name=acme-staging,short=-"`
+	ACMEDirectory string `help:"ACME directory URL, to use a certificate authority other than Let's Encrypt" opts:"name=acme-directory,short=-"`
 	//http handlers
 	files, static http.Handler
 	scraper       *scraper.Handler
@@ -66,6 +73,17 @@ func (s *Server) Run(version string) error {
 	isTLS := s.CertPath != "" || s.KeyPath != "" //poor man's XOR
 	if isTLS && (s.CertPath == "" || s.KeyPath == "") {
 		return fmt.Errorf("You must provide both key and cert paths")
+	}
+	var certs *autocert.Manager
+	if s.Domain != "" {
+		var err error
+		if certs, err = s.certManager(); err != nil {
+			return err
+		}
+		isTLS = true
+		if s.HTTPPort == 0 {
+			s.HTTPPort = 80
+		}
 	}
 	s.state.Stats.Title = s.Title
 	s.state.Stats.Version = version
@@ -134,9 +152,9 @@ func (s *Server) Run(version string) error {
 		}
 	}()
 
-	host := s.Host
-	if host == "" {
-		host = "0.0.0.0"
+	host := listenHost(s.Host, s.Auth)
+	if s.Host == "" && s.Auth == "" {
+		log.Printf("No --auth set, so listening on localhost only; pass --host 0.0.0.0 to expose it anyway")
 	}
 	addr := fmt.Sprintf("%s:%d", host, s.Port)
 	proto := "http"
@@ -153,13 +171,67 @@ func (s *Server) Run(version string) error {
 			open.Run(fmt.Sprintf("%s://%s:%d", proto, openhost, s.Port))
 		}()
 	}
-	//define handler chain, from last to first
-	h := http.Handler(http.HandlerFunc(s.handle))
+	h := s.handler()
+	log.Printf("Listening at %s://%s", proto, addr)
+	//serve!
+	server := http.Server{
+		//disable http2 due to velox bug
+		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){},
+		//address
+		Addr: addr,
+		//handler stack
+		Handler: h,
+	}
+	if certs != nil {
+		if host == "127.0.0.1" {
+			log.Printf("--domain is set but the server only listens on localhost, so Let's Encrypt can't reach it; add --auth or --host 0.0.0.0")
+		}
+		server.TLSConfig = tlsConfigFor(certs)
+		httpAddr := fmt.Sprintf("%s:%d", host, s.HTTPPort)
+		log.Printf("Let's Encrypt enabled for %s; challenges and HTTPS redirect on http://%s", s.Domain, httpAddr)
+		errc := make(chan error, 2)
+		go func() {
+			err := http.ListenAndServe(httpAddr, certs.HTTPHandler(httpsRedirect(s.Domain, s.Port)))
+			errc <- fmt.Errorf("HTTP listener on %s: %w", httpAddr, err)
+		}()
+		go func() { errc <- server.ListenAndServeTLS("", "") }()
+		return <-errc
+	}
+	if isTLS {
+		return server.ListenAndServeTLS(s.CertPath, s.KeyPath)
+	}
+	return server.ListenAndServe()
+}
+
+// listenHost keeps an instance with no password off the network unless the
+// user asks for an interface explicitly.
+func listenHost(host, auth string) string {
+	if host != "" {
+		return host
+	}
+	if auth == "" {
+		return "127.0.0.1"
+	}
+	return "0.0.0.0"
+}
+
+// handler builds the middleware chain, from last to first.
+func (s *Server) handler() http.Handler {
+	base := http.Handler(http.HandlerFunc(s.handle))
 	//gzip
 	compression := gzip.DefaultCompression
 	minSize := 0 //IMPORTANT
 	gzipWrap, _ := gziphandler.NewGzipLevelAndMinSize(compression, minSize)
-	h = gzipWrap(h)
+	gz := gzipWrap(base)
+	// downloads skip gzip: compressing a Range response breaks resume and
+	// seeking, and it drops Content-Length that download managers rely on
+	h := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/download/") {
+			base.ServeHTTP(w, r)
+			return
+		}
+		gz.ServeHTTP(w, r)
+	}))
 	//auth
 	if s.Auth != "" {
 		user := s.Auth
@@ -174,20 +246,7 @@ func (s *Server) Run(version string) error {
 	if s.Log {
 		h = requestlog.Wrap(h)
 	}
-	log.Printf("Listening at %s://%s", proto, addr)
-	//serve!
-	server := http.Server{
-		//disable http2 due to velox bug
-		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){},
-		//address
-		Addr: addr,
-		//handler stack
-		Handler: h,
-	}
-	if isTLS {
-		return server.ListenAndServeTLS(s.CertPath, s.KeyPath)
-	}
-	return server.ListenAndServe()
+	return h
 }
 
 func (s *Server) reconfigure(c engine.Config) error {
@@ -200,7 +259,9 @@ func (s *Server) reconfigure(c engine.Config) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(&c, "", "  ")
-	ioutil.WriteFile(s.ConfigPath, b, 0755)
+	ioutil.WriteFile(s.ConfigPath, b, 0600)
+	// WriteFile keeps an existing file's mode, and older installs wrote 0755
+	os.Chmod(s.ConfigPath, 0600)
 	s.state.Config = c
 	s.state.Push()
 	return nil
