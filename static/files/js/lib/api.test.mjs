@@ -83,3 +83,14 @@ test("onBusy reports true while any request is in flight, then false", async () 
   await api.magnet("magnet:?xt=urn:btih:c");
   assert.deepEqual(seen, [true, false]);
 });
+
+test("file selection posts action, infohash and a path that may contain colons", async () => {
+  const f = stubFetch(ok(), ok());
+  const api = createApi(f);
+  await api.file("stop", "abc", "pack/a: b.bin");
+  await api.file("start", "abc", "pack/c.bin");
+  assert.deepEqual(f.calls, [
+    { url: "api/file", method: "POST", body: "stop:abc:pack/a: b.bin" },
+    { url: "api/file", method: "POST", body: "start:abc:pack/c.bin" },
+  ]);
+});

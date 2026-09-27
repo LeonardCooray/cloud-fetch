@@ -21,6 +21,8 @@ type Torrent struct {
 	DownloadRate float32
 	t            *torrent.Torrent
 	magnet       string
+	stopped      map[string]bool // file paths deselected by StopFile
+	verify       *verification
 	updatedAt    time.Time
 }
 
@@ -31,7 +33,7 @@ type File struct {
 	Chunks    int
 	Completed int
 	//cloud fetch
-	Started bool
+	Started bool // selected for download
 	Percent float32
 	f       *torrent.File
 }
@@ -65,6 +67,7 @@ func (torrent *Torrent) updateLoaded(t *torrent.Torrent) {
 		}
 		chunks := f.State()
 
+		file.Started = !torrent.stopped[path]
 		file.Size = f.Length()
 		file.Chunks = len(chunks)
 		completed := 0

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,34 +11,38 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 )
 
+// freePort finds a port free for both TCP and UDP on every interface, since
+// the client listens on both there.
 func freePort(t *testing.T) int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	for i := 0; i < 50; i++ {
+		l, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		u, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
+		l.Close()
+		if err == nil {
+			u.Close()
+			return port
+		}
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	t.Fatal("no port free for both TCP and UDP")
+	return 0
 }
 
-// startEngine stands in for a process start: a fresh Engine over dir.
+// startEngine stands in for a process start: a fresh Engine over dir, with
+// AutoStart on as the server defaults it.
 func startEngine(t *testing.T, dir string) *Engine {
 	t.Helper()
-	e := New()
-	if err := e.Configure(Config{DownloadDirectory: dir, IncomingPort: freePort(t)}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { closeEngine(e) })
-	return e
+	return startEngineWith(t, Config{DownloadDirectory: dir, AutoStart: true})
 }
 
 func closeEngine(e *Engine) {
 	e.mut.Lock()
 	defer e.mut.Unlock()
-	if e.client != nil {
-		e.client.Close()
-		e.client = nil
-	}
+	e.closeClientLocked()
 }
 
 func restart(t *testing.T, e *Engine, dir string) *Engine {
