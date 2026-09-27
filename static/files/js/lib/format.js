@@ -7,6 +7,18 @@ export function bytes(n) {
   return `${scaled} ${UNITS[i]}`;
 }
 
+// systemUsage turns Stats.System into footer text; null until the server
+// has gathered its first sample (set is false before then).
+export function systemUsage(system) {
+  if (!system || !system.set) return null;
+  const known = system.memoryTotal > 0;
+  return {
+    cpu: `${Math.round(system.cpu || 0)}%`,
+    memory: known ? `${Math.round((100 * system.memoryUsed) / system.memoryTotal)}%` : "",
+    memoryDetail: known ? `${bytes(system.memoryUsed)} of ${bytes(system.memoryTotal)}` : "",
+  };
+}
+
 export function hoursSince(t, now = Date.now()) {
   return (now - new Date(t).getTime()) / 3600000;
 }

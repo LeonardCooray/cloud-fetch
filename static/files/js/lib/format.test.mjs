@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bytes, ago, hoursSince, filename, addSpaces, inputType } from "./format.js";
+import { bytes, ago, hoursSince, filename, addSpaces, inputType, systemUsage } from "./format.js";
 
 test("bytes uses metric units with at most one decimal", () => {
   assert.equal(bytes(0), "0 B");
@@ -58,4 +58,17 @@ test("inputType picks the form control for a config value", () => {
   assert.equal(inputType(50007), "number");
   assert.equal(inputType("/downloads"), "text");
   assert.equal(inputType(null), "text");
+});
+
+test("systemUsage rounds cpu and memory to whole percents", () => {
+  const system = { set: true, cpu: 18.98, memoryUsed: 19755433984, memoryTotal: 25769803776 };
+  assert.deepEqual(systemUsage(system), { cpu: "19%", memory: "77%", memoryDetail: "19.8 GB of 25.8 GB" });
+});
+
+test("systemUsage is empty until the server has sent real numbers", () => {
+  for (const v of [undefined, null, {}, { set: false, cpu: 5 }]) assert.equal(systemUsage(v), null);
+});
+
+test("systemUsage leaves out memory when the total is unknown", () => {
+  assert.deepEqual(systemUsage({ set: true, cpu: 0, memoryUsed: 0, memoryTotal: 0 }), { cpu: "0%", memory: "", memoryDetail: "" });
 });
