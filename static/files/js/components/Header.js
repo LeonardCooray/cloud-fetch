@@ -4,7 +4,7 @@ import { Icon } from "../icons.js";
 export function Header({ title, busy, connected, configOpen, editorOpen, onToggleConfig, onToggleEditor }) {
   return html`<header class="header">
     <a class="brand" href="https://github.com/LeonardCooray/cloud-fetch" target="_blank" rel="noopener">
-      <${Icon} name="cloud" />${title || "Cloud Fetch"}
+      <${Icon} name="cloud" /><span class="title" title=${title || "Cloud Fetch"}>${title || "Cloud Fetch"}</span>
     </a>
     <div class="status">
       ${busy && html`<${Icon} name="loader" class="spin" label="Working" />`}

@@ -61,11 +61,20 @@ test("resolveItem prefers magnet, then torrent, then a lookup", () => {
 test("resolveLookup turns an item page into something the server can add", () => {
   assert.deepEqual(resolveLookup({ torrent: "https://s/x.torrent", magnet: "magnet:?xt=urn:btih:a" }, "n"), { kind: "url", value: "https://s/x.torrent" });
   assert.deepEqual(resolveLookup({ magnet: "magnet:?xt=urn:btih:a" }, "n"), { kind: "magnet", value: "magnet:?xt=urn:btih:a" });
+  const ih = "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c";
   assert.deepEqual(
-    resolveLookup({ infohash: "abc", tracker: "udp://a:1, http://b/ann ,https://c/ann,wss://d" }, "My Name"),
-    { kind: "magnet", value: "magnet:?xt=urn:btih:abc&dn=My%20Name&tr=udp%3A%2F%2Fa%3A1&tr=http%3A%2F%2Fb%2Fann" },
+    resolveLookup({ infohash: ih, tracker: "udp://a:1, http://b/ann ,https://c/ann,wss://d" }, "My Name"),
+    { kind: "magnet", value: `magnet:?xt=urn:btih:${ih}&dn=My%20Name&tr=udp%3A%2F%2Fa%3A1&tr=http%3A%2F%2Fb%2Fann` },
   );
   assert.deepEqual(resolveLookup({ torrent: "javascript:x" }, "n"), { error: "No magnet or infohash found" });
   assert.deepEqual(resolveLookup({}, "n"), { error: "No magnet or infohash found" });
   assert.deepEqual(resolveLookup(null, "n"), { error: "No response" });
+});
+
+test("resolveLookup refuses a scraped infohash that isn't a hash", () => {
+  const ih = "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c";
+  for (const bad of [`${ih}&tr=http://evil.example/ann`, "abc", " "]) {
+    assert.deepEqual(resolveLookup({ infohash: bad }, "n"), { error: "The provider's info hash isn't valid" }, bad);
+  }
+  assert.equal(resolveLookup({ infohash: ` ${ih} ` }, "n").value, `magnet:?xt=urn:btih:${ih}&dn=n`);
 });

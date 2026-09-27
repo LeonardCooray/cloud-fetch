@@ -15,6 +15,12 @@ export function App({ api }) {
   const [busy, setBusy] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [slowStart, setSlowStart] = useState(false);
+  useEffect(() => {
+    if (everConnected) return undefined;
+    const id = setTimeout(() => setSlowStart(true), 5000);
+    return () => clearTimeout(id);
+  }, [everConnected]);
   const report = (e) => setError((e && e.message) || String(e));
   useEffect(() => api.onBusy(setBusy), [api]);
   const stats = state.Stats || {};
@@ -28,6 +34,9 @@ export function App({ api }) {
       onToggleConfig=${() => setConfigOpen(!configOpen)}
       onToggleEditor=${() => setEditorOpen(!editorOpen)} />
     ${everConnected && !connected && html`<div class="reconnecting" role="status">Reconnecting…</div>`}
+    ${!everConnected && slowStart && html`<div class="reconnecting" role="status">
+      Can't reach the Cloud Fetch server for live updates yet. Still trying…
+    </div>`}
     ${configOpen && state.Config && html`<${ConfigForm} config=${state.Config} api=${api} onError=${report} onClose=${() => setConfigOpen(false)} />`}
     <${OmniBar} api=${api} providers=${state.SearchProviders} editorOpen=${editorOpen} setEditorOpen=${setEditorOpen} onError=${report} />
     ${error && html`<${ErrorBanner} message=${error} onDismiss=${() => setError(null)} />`}

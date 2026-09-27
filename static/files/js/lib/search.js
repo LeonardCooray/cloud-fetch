@@ -1,4 +1,4 @@
-import { buildMagnet } from "./magnet.js";
+import { buildMagnet, validInfohash } from "./magnet.js";
 
 export function safeHttpUrl(u) {
   return typeof u === "string" && /^https?:\/\//i.test(u) ? u : "";
@@ -50,11 +50,13 @@ export function resolveLookup(data, name) {
   const magnet = safeMagnet(data.magnet);
   if (magnet) return { kind: "magnet", value: magnet };
   if (data.infohash) {
+    const infohash = String(data.infohash).trim();
+    if (!validInfohash(infohash)) return { error: "The provider's info hash isn't valid" };
     const trackers = String(data.tracker || "")
       .split(",")
       .map((s) => s.trim())
       .filter((s) => /^(http|udp):\/\//.test(s));
-    return { kind: "magnet", value: buildMagnet({ name, infohash: data.infohash, trackers }) };
+    return { kind: "magnet", value: buildMagnet({ name, infohash, trackers }) };
   }
   return { error: "No magnet or infohash found" };
 }

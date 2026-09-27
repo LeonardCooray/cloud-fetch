@@ -50,10 +50,11 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.brand { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 600; color: var(--text); }
-.brand .icon { width: 24px; height: 24px; color: var(--accent); }
-.status { display: flex; align-items: center; gap: 6px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 20px; font-weight: 600; color: var(--text); }
+.brand .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand .icon { flex-shrink: 0; width: 24px; height: 24px; color: var(--accent); }
+.status { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; margin-left: 4px; border-radius: 50%; background: var(--danger); }
 .dot.ok { background: var(--ok); }
 .reconnecting {
