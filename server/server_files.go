@@ -40,9 +40,8 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
 		//dldir is absolute
 		dldir := s.state.Config.DownloadDirectory
 		file := filepath.Join(dldir, url)
-		//only allow fetches/deletes inside the dl dir
-		if !strings.HasPrefix(file, dldir) || dldir == file {
-			http.Error(w, "Nice try\n"+dldir+"\n"+file, http.StatusBadRequest)
+		if !insideDir(dldir, file) {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
 			return
 		}
 		info, err := os.Stat(file)
@@ -78,6 +77,16 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.static.ServeHTTP(w, r)
+}
+
+// insideDir reports whether p is strictly below dir. A plain prefix check
+// would let "/dl" match "/dl2/secret".
+func insideDir(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || rel == "." {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 //custom directory walk

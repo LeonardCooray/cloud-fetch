@@ -13,6 +13,7 @@ func main() {
 	s := server.Server{
 		Title:      "Cloud Torrent",
 		Port:       3000,
+		HTTPPort:   80,
 		ConfigPath: "cloud-torrent.json",
 	}
 

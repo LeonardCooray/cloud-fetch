@@ -4,15 +4,32 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 
 	"github.com/jpillora/cloud-torrent/engine"
 )
+
+const maxTorrentBytes = 10 << 20
+
+var remoteFetchTimeout = 30 * time.Second
+
+func readCapped(r io.Reader) ([]byte, error) {
+	b, err := ioutil.ReadAll(io.LimitReader(r, maxTorrentBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxTorrentBytes {
+		return nil, fmt.Errorf("too large (limit %d MB)", maxTorrentBytes>>20)
+	}
+	return b, nil
+}
 
 func (s *Server) api(r *http.Request) error {
 	defer r.Body.Close()
@@ -22,20 +39,21 @@ func (s *Server) api(r *http.Request) error {
 
 	action := strings.TrimPrefix(r.URL.Path, "/api/")
 
-	data, err := ioutil.ReadAll(r.Body)
+	data, err := readCapped(r.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to download request body")
+		return fmt.Errorf("Failed to read request body: %s", err)
 	}
 
 	//convert url into torrent bytes
 	if action == "url" {
 		url := string(data)
-		remote, err := http.Get(url)
+		client := &http.Client{Timeout: remoteFetchTimeout}
+		remote, err := client.Get(url)
 		if err != nil {
 			return fmt.Errorf("Invalid remote torrent URL: %s (%s)", err, url)
 		}
-		//TODO enforce max body size (32k?)
-		data, err = ioutil.ReadAll(remote.Body)
+		defer remote.Body.Close()
+		data, err = readCapped(remote.Body)
 		if err != nil {
 			return fmt.Errorf("Failed to download remote torrent: %s", err)
 		}
