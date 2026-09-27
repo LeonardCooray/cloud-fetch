@@ -49,6 +49,10 @@ type Server struct {
 	files, static http.Handler
 	scraper       *scraper.Handler
 	scraperh      http.Handler
+	searchConfig  []byte // normalized; only the fetch loop touches it after Run starts it
+	//set by Run so closeListener can stop it
+	runMut     sync.Mutex
+	httpServer *http.Server
 	//torrent engine
 	engine *engine.Engine
 	state  struct {
@@ -107,6 +111,7 @@ func (s *Server) Run(version string) error {
 		log.Fatal(err)
 	}
 	//scraper
+	s.searchConfig, _ = normalize(builtinSearchConfig())
 	s.state.SearchProviders = s.scraper.Config //share scraper config
 	s.scraperh = http.StripPrefix("/search", s.scraper)
 	//torrent engine
@@ -191,6 +196,9 @@ func (s *Server) Run(version string) error {
 		//handler stack
 		Handler: h,
 	}
+	s.runMut.Lock()
+	s.httpServer = &server
+	s.runMut.Unlock()
 	if certs != nil {
 		if host == "127.0.0.1" {
 			log.Printf("--domain is set but the server only listens on localhost, so Let's Encrypt can't reach it; add --auth or --host 0.0.0.0")
@@ -210,6 +218,17 @@ func (s *Server) Run(version string) error {
 		return server.ListenAndServeTLS(s.CertPath, s.KeyPath)
 	}
 	return server.ListenAndServe()
+}
+
+// closeListener stops the main listener, which makes Run return. Tests use
+// it; the pollers and the Let's Encrypt HTTP listener keep running.
+func (s *Server) closeListener() {
+	s.runMut.Lock()
+	srv := s.httpServer
+	s.runMut.Unlock()
+	if srv != nil {
+		srv.Close()
+	}
 }
 
 // initSync wires the embedded velox.State to this struct once, so every
