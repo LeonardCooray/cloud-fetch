@@ -22,7 +22,7 @@ func newSearchServer(t *testing.T, url string) *Server {
 // file must fail here rather than at startup on the VPS
 func TestBuiltInSearchConfigHasRepoProviders(t *testing.T) {
 	s := newSearchServer(t, "")
-	for _, id := range []string{"nyaa", "1337x", "1337x/item", "lt"} {
+	for _, id := range []string{"nyaa", "lt", "lt/item", "abb", "abb/item"} {
 		if _, ok := s.scraper.Config[id]; !ok {
 			t.Errorf("built-in providers missing %q", id)
 		}

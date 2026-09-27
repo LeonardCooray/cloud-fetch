@@ -12,7 +12,8 @@ builds:
       - linux
       - darwin
       - windows
-      - openbsd
+      # no openbsd: anacrolix/torrent's storage package uses unix.SEEK_DATA,
+      # which golang.org/x/sys doesn't define there, so it doesn't compile
     goarch:
       - '386'
       - amd64
@@ -23,12 +24,15 @@ builds:
       - '7'
 nfpms:
   - maintainer: "https://github.com/{{ .Env.GITHUB_USER }}"
+    description: Self-hosted remote torrent client with a web UI, forked from jpillora/cloud-torrent
+    homepage: "https://github.com/{{ .Env.GITHUB_USER }}/cloud-fetch"
+    license: AGPL-3.0
     formats:
       - deb
       - rpm
       - apk
 archives:
-  - format: gz
+  - formats: [gz]
     files:
       - none*
 changelog:
