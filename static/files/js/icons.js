@@ -15,6 +15,8 @@ const PATHS = {
   film: "M3 5h18v14H3zM7 5v14M17 5v14M3 9h4M3 15h4M17 9h4M17 15h4",
   play: "M7 4l13 8-13 8z",
   stop: "M6 6h12v12H6z",
+  pause: "M8 5v14M16 5v14",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   check: "M5 12l5 5 9-10",
   x: "M6 6l12 12M18 6 6 18",

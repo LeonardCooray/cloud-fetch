@@ -138,7 +138,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .torrent-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .torrent .info { flex: 1 1 260px; min-width: 0; }
 .torrent .info .name { font-weight: 600; overflow-wrap: anywhere; }
-.hash { color: var(--faint); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+.hash { margin: 10px 0 0; color: var(--faint); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; user-select: all; }
 .torrent .buttons { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
 .overlay {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -149,6 +149,16 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .progress .bar { height: 100%; background: var(--accent); transition: width 0.5s; }
 .torrent .status { color: var(--muted); font-size: 13px; }
 .torrent .status strong { color: var(--text); }
+.badge {
+  display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 500; vertical-align: 2px; white-space: nowrap;
+}
+.badge-loading { background: var(--bg); color: var(--muted); }
+.badge-downloading { background: var(--accent-bg); color: var(--accent); }
+.badge-seeding, .badge-done { background: var(--ok-bg); color: var(--ok); }
+.badge-paused { background: var(--warn-bg); color: var(--warn); }
+.torrent.is-seeding .progress .bar, .torrent.is-done .progress .bar { background: var(--ok); }
+.torrent.is-paused .progress .bar { background: var(--faint); }
 .files { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 13px; }
 .files th, .files td { padding: 5px 6px; border-top: 1px solid var(--border); text-align: left; }
 .files .name { overflow-wrap: anywhere; }
@@ -173,5 +183,6 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 @media (max-width: 600px) {
   .container { padding: 10px; }
   .torrent .buttons { width: 100%; }
+  .torrent .buttons button { flex: 1 1 0; justify-content: center; min-height: 36px; }
   .preview { margin-left: 0; }
 }
