@@ -27,15 +27,25 @@ export function fileIcon(path) {
   return "file";
 }
 
+// indexTorrentFiles maps each torrent file's path to { torrent, file }. The
+// Downloads tree looks up every row on every push, so it builds this once
+// per render; velox merges pushes into the same objects, so it can't be
+// cached across renders by identity. The first torrent listing a path wins.
+export function indexTorrentFiles(torrents) {
+  const index = new Map();
+  for (const torrent of Object.values(torrents || {})) {
+    for (const file of torrent.Files || []) {
+      if (file && !index.has(file.Path)) index.set(file.Path, { torrent, file });
+    }
+  }
+  return index;
+}
+
 // The engine keeps an unfinished file on disk as "<name>.part" and renames
 // it when it completes, so a .part path matches the torrent file it becomes.
-export function findTorrentFile(torrents, path) {
+export function findTorrentFile(files, path) {
   const target = path.endsWith(".part") ? path.slice(0, -".part".length) : path;
-  for (const torrent of Object.values(torrents || {})) {
-    const file = (torrent.Files || []).find((f) => f && (f.Path === path || f.Path === target));
-    if (file) return { torrent, file };
-  }
-  return null;
+  return files.get(path) || (target !== path && files.get(target)) || null;
 }
 
 export function isDownloading(match) {
@@ -67,20 +77,20 @@ export function absoluteHref(path, base) {
 // finishedFiles lists the files the copy buttons may copy: complete files
 // only, so a paused torrent's half-written file (or a stray .part) never
 // ends up in IDM.
-export function finishedFiles(node, path, torrents) {
-  if (isDir(node)) return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), torrents));
-  return isFinished(path, torrents) ? [path] : [];
+export function finishedFiles(node, path, files) {
+  if (isDir(node)) return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), files));
+  return isFinished(path, files) ? [path] : [];
 }
 
 // hasFinishedFile decides whether a row gets a copy button. It runs for
 // every folder on every push, so it stops at the first finished file.
-export function hasFinishedFile(node, path, torrents) {
-  if (isDir(node)) return node.Children.some((c) => hasFinishedFile(c, childPath(path, c.Name), torrents));
-  return isFinished(path, torrents);
+export function hasFinishedFile(node, path, files) {
+  if (isDir(node)) return node.Children.some((c) => hasFinishedFile(c, childPath(path, c.Name), files));
+  return isFinished(path, files);
 }
 
-function isFinished(path, torrents) {
+function isFinished(path, files) {
   if (path.endsWith(".part")) return false;
-  const match = findTorrentFile(torrents, path);
+  const match = findTorrentFile(files, path);
   return !match || match.file.Percent >= 100;
 }
