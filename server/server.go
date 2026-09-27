@@ -310,7 +310,7 @@ func (s *Server) reconfigure(c engine.Config) error {
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	//handle realtime client library
 	if r.URL.Path == "/js/velox.js" {
-		velox.JS.ServeHTTP(w, r)
+		serveVeloxJS(w, r)
 		return
 	}
 	//handle realtime client connections
