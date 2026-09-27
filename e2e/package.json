@@ -1,0 +1,12 @@
+{
+  "name": "cloud-fetch-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the Cloud Fetch web UI. Dev-only: not embedded, not needed by go install.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

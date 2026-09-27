@@ -1,27 +1,29 @@
 import { useState } from "preact/hooks";
 import { html } from "../html.js";
 import { Icon } from "../icons.js";
-import { bytes } from "../lib/format.js";
 import { sortTorrents } from "../lib/tree.js";
+import { STATUS_LABELS, statusLine, torrentStatus } from "../lib/status.js";
 import { FileTable } from "./FileTable.js";
 
 function TorrentCard({ t, api, onError }) {
   const [showFiles, setShowFiles] = useState(false);
   const act = (action) => api.torrent(action, t.InfoHash).catch(onError);
+  const status = torrentStatus(t);
+  const line = statusLine(t);
   const pct = t.Percent || 0;
-  return html`<article class="card torrent" aria-label=${t.Name || t.InfoHash}>
+  return html`<article class=${"card torrent is-" + status} aria-label=${t.Name || t.InfoHash}>
     ${!t.Loaded && html`<div class="overlay"><${Icon} name="loader" class="spin" /> Loading</div>`}
     <div class="torrent-top">
       <div class="info">
-        <div class="name">${t.Name || t.InfoHash}</div>
-        <div class="hash">#${t.InfoHash}</div>
+        <div class="name">${t.Name || t.InfoHash} <span class=${"badge badge-" + status}>${STATUS_LABELS[status]}</span></div>
       </div>
       <div class="buttons">
         <button type="button" class=${showFiles ? "on" : ""} aria-pressed=${showFiles} onClick=${() => setShowFiles(!showFiles)}>
           <${Icon} name="file" /> Files
         </button>
-        <button type="button" class="go" disabled=${t.Started} onClick=${() => act("start")}><${Icon} name="play" /> Start</button>
-        ${t.Started && html`<button type="button" class="danger" onClick=${() => act("stop")}><${Icon} name="stop" /> Stop</button>`}
+        ${t.Started
+          ? html`<button type="button" onClick=${() => act("stop")}><${Icon} name="pause" /> Pause</button>`
+          : html`<button type="button" onClick=${() => act("start")}><${Icon} name="play" /> Resume</button>`}
         ${!t.Started && html`<button type="button" class="danger" onClick=${() => act("delete")}>
           <${Icon} name=${t.Loaded ? "trash" : "x"} /> ${t.Loaded ? "Remove" : "Cancel"}
         </button>`}
@@ -30,10 +32,10 @@ function TorrentCard({ t, api, onError }) {
     <div class="progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${pct}>
       <div class="bar" style=${{ width: pct + "%" }}></div>
     </div>
-    ${t.Started && html`<div class="status">
-      ${bytes(t.Downloaded)} / ${bytes(t.Size)} · ${pct}% · <strong>${bytes(t.DownloadRate)}/s</strong>
+    ${line.main && html`<div class="status">
+      ${line.main}${line.rate && html` · <strong>${line.rate}</strong>`}${line.note && ` · ${line.note}`}
     </div>`}
-    ${showFiles && t.Loaded && html`<${FileTable} files=${t.Files} size=${t.Size}
+    ${showFiles && t.Loaded && html`<${FileTable} infohash=${t.InfoHash} files=${t.Files} size=${t.Size}
       onSelect=${(path, on) => api.file(on ? "start" : "stop", t.InfoHash, path).catch((e) => { onError(e); throw e; })} />`}
   </article>`;
 }

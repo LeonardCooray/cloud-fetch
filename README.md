@@ -1,4 +1,4 @@
-![Cloud Fetch web UI showing two completed torrents, one fetching metadata, and the downloads folder](docs/screenshot.png)
+![Cloud Fetch web UI showing a seeding torrent with its files open, a finished paused torrent, one still downloading, and the downloads folder with copy-link buttons](docs/screenshot.png)
 
 **Cloud Fetch** is a self-hosted remote torrent client written in Go. You add torrents from the browser, they download to the server's disk, and you fetch or stream the files over HTTP(S) with a browser, a download manager such as IDM, or a player such as VLC.
 
@@ -103,6 +103,13 @@ The web UI is plain ES modules in `static/files/`, with Preact and htm vendored 
 
 ``` sh
 node --test "static/files/js/**/*.test.mjs"
+```
+
+Browser tests live in `e2e/` (Playwright, dev-only; nothing there is embedded or needed by `go install`). They build the binary and run it offline against temporary folders:
+
+``` sh
+cd e2e && npm ci && npx playwright install chromium
+npx playwright test
 ```
 
 ### Credits
