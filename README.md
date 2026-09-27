@@ -1,13 +1,12 @@
-<img src="https://user-images.githubusercontent.com/633843/32198822-e59a0fc4-be1d-11e7-9b92-03ce17ba05ba.png" alt="screenshot"/>
+![Cloud Fetch web UI showing two completed torrents, one fetching metadata, and the downloads folder](docs/screenshot.png)
 
 **Cloud Fetch** is a self-hosted remote torrent client written in Go. You add torrents from the browser, they download to the server's disk, and you fetch or stream the files over HTTP(S) with a browser, a download manager such as IDM, or a player such as VLC.
-
-It's a fork of [jpillora/cloud-torrent](https://github.com/jpillora/cloud-torrent) by Jaime Pillora, released under the same AGPL-3.0 licence.
 
 ### Features
 
 * Single binary, cross platform
 * Torrents, their metadata and their started/stopped state survive restarts
+* Files already on disk are hash-checked when you add a torrent, so wrong or partial data is downloaded again
 * Optional HTTPS with a free, auto-renewing Let's Encrypt certificate
 * Resumable, seekable downloads (HTTP Range) for download managers and media players
 * Embedded torrent search, with the provider list kept in this repo
