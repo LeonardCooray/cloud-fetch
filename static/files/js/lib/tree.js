@@ -49,3 +49,16 @@ export function sortTorrents(torrents) {
     (a, b) => key(a).localeCompare(key(b), undefined, { sensitivity: "base" }) || a.InfoHash.localeCompare(b.InfoHash),
   );
 }
+
+// absoluteHref is what Copy link puts on the clipboard: the same link the
+// row shows, made absolute so IDM and VLC can use it outside the page.
+export function absoluteHref(path, base) {
+  return new URL(downloadHref(path), base).href;
+}
+
+// finishedFiles lists the files Copy all should copy: every file under node
+// whose link is shown, i.e. not one a started torrent is still writing.
+export function finishedFiles(node, path, torrents) {
+  if (!isDir(node)) return isDownloading(findTorrentFile(torrents, path)) ? [] : [path];
+  return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), torrents));
+}
