@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -30,33 +31,52 @@ func (e *Engine) Config() Config {
 }
 
 func (e *Engine) Configure(c Config) error {
-	//recieve config
-	if e.client != nil {
-		e.client.Close()
-		time.Sleep(1 * time.Second)
-	}
-	if c.IncomingPort <= 0 {
+	// validate before touching the running client: a rejected config must
+	// leave the current torrents running
+	if c.IncomingPort <= 0 || c.IncomingPort > 65535 {
 		return fmt.Errorf("Invalid incoming port (%d)", c.IncomingPort)
 	}
+	e.mut.Lock()
+	old, prev := e.client, e.config
+	e.mut.Unlock()
+	if old != nil {
+		old.Close()
+		time.Sleep(1 * time.Second)
+	}
+	client, err := newClient(c)
+	if err != nil {
+		if old != nil {
+			// e.g. the new port is taken: bring the previous setup back
+			if back, berr := newClient(prev); berr == nil {
+				e.install(prev, back)
+			} else {
+				log.Printf("reconfigure failed (%s) and restoring the previous config failed too: %s", err, berr)
+			}
+		}
+		return err
+	}
+	e.install(c, client)
+	return nil
+}
 
+func newClient(c Config) (*torrent.Client, error) {
 	config := torrent.NewDefaultClientConfig()
 	config.DataDir = c.DownloadDirectory
 	config.NoUpload = !c.EnableUpload
 	config.Seed = c.EnableSeeding
 	config.ListenPort = c.IncomingPort
-	client, err := torrent.NewClient(config)
-	if err != nil {
-		return err
-	}
+	return torrent.NewClient(config)
+}
+
+func (e *Engine) install(c Config, client *torrent.Client) {
 	e.mut.Lock()
+	defer e.mut.Unlock()
 	e.config = c
 	e.client = client
 	// the old client's torrents are closed; the store is the source of truth
 	e.ts = map[string]*Torrent{}
 	e.store = newStore(filepath.Join(c.DownloadDirectory, storeDirName))
 	e.restoreLocked()
-	e.mut.Unlock()
-	return nil
 }
 
 func (e *Engine) restoreLocked() {
@@ -76,7 +96,7 @@ func (e *Engine) restoreLocked() {
 			log.Printf("restore: %s: %s", st.InfoHash, err)
 			continue
 		}
-		e.trackLocked(tt, st.Magnet, st.Started)
+		e.trackLocked(tt, st.Magnet, st.Started, false)
 	}
 }
 
@@ -99,14 +119,18 @@ func (e *Engine) NewTorrent(spec *torrent.TorrentSpec) error {
 func (e *Engine) newTorrent(tt *torrent.Torrent, magnet string) error {
 	e.mut.Lock()
 	defer e.mut.Unlock()
-	t := e.trackLocked(tt, magnet, true)
+	t := e.trackLocked(tt, magnet, true, true)
 	e.saveLocked(t)
 	return nil
 }
 
 // trackLocked registers tt and applies its started state. Metadata may still
 // be unknown (magnets), so the .torrent save and DownloadAll wait for GotInfo.
-func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started bool) *Torrent {
+// verify is set for torrents the person just added: the file storage treats
+// a same-size file at the final name as complete without hashing it, so
+// existing data is checked once here. Restores skip it; the completion
+// database already holds what passed.
+func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify bool) *Torrent {
 	t := e.upsertTorrent(tt)
 	t.magnet = magnet
 	t.Started = started
@@ -118,6 +142,9 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started bool) *
 	if tt.Info() != nil {
 		// synchronous so a .torrent add is on disk before the API call returns
 		saveMetainfo(st, tt)
+		if verify {
+			verifyInBackground(tt)
+		}
 		if started {
 			tt.DownloadAll()
 		}
@@ -130,6 +157,9 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started bool) *
 			return
 		}
 		saveMetainfo(st, tt)
+		if verify {
+			verifyInBackground(tt)
+		}
 		e.mut.Lock()
 		defer e.mut.Unlock()
 		if t.Started && !t.Dropped {
@@ -137,6 +167,25 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started bool) *
 		}
 	}()
 	return t
+}
+
+// verifyInBackground hashes every piece against the metainfo; failed pieces
+// become incomplete and download normally. Stops if the torrent is dropped.
+func verifyInBackground(tt *torrent.Torrent) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-tt.Closed():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	go func() {
+		defer cancel()
+		if err := tt.VerifyDataContext(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("verify %s: %s", tt.InfoHash().HexString(), err)
+		}
+	}()
 }
 
 func saveMetainfo(st *store, tt *torrent.Torrent) {
