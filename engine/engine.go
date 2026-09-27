@@ -153,8 +153,9 @@ func (e *Engine) saveLocked(t *Torrent) {
 	}
 }
 
-// GetTorrents moves torrents out of the anacrolix/torrent
-// and into the local cache
+// GetTorrents refreshes the local cache from anacrolix/torrent and returns a
+// copy of it. The copy matters: callers hand it to velox, which marshals it
+// on other goroutines while the engine keeps mutating its own map and structs.
 func (e *Engine) GetTorrents() map[string]*Torrent {
 	e.mut.Lock()
 	defer e.mut.Unlock()
@@ -165,7 +166,19 @@ func (e *Engine) GetTorrents() map[string]*Torrent {
 	for _, tt := range e.client.Torrents() {
 		e.upsertTorrent(tt)
 	}
-	return e.ts
+	out := make(map[string]*Torrent, len(e.ts))
+	for ih, t := range e.ts {
+		c := *t
+		c.Files = make([]*File, len(t.Files))
+		for i, f := range t.Files {
+			if f != nil {
+				fc := *f
+				c.Files[i] = &fc
+			}
+		}
+		out[ih] = &c
+	}
+	return out
 }
 
 func (e *Engine) upsertTorrent(tt *torrent.Torrent) *Torrent {

@@ -108,7 +108,6 @@ func (s *Server) Run(version string) error {
 	}
 	//scraper
 	s.state.SearchProviders = s.scraper.Config //share scraper config
-	go s.fetchSearchConfigLoop()
 	s.scraperh = http.StripPrefix("/search", s.scraper)
 	//torrent engine
 	s.engine = engine.New()
@@ -138,6 +137,10 @@ func (s *Server) Run(version string) error {
 	if err := s.reconfigure(c); err != nil {
 		return fmt.Errorf("initial configure failed: %s", err)
 	}
+	// after reconfigure, so the first snapshot any client gets already has the
+	// loaded config; pushes made before this (the search config) are no-ops
+	s.initSync()
+	go s.fetchSearchConfigLoop()
 	//poll torrents and files
 	go func() {
 		for {
@@ -153,7 +156,7 @@ func (s *Server) Run(version string) error {
 	go func() {
 		for {
 			c := s.engine.Config()
-			s.state.Stats.System.loadStats(c.DownloadDirectory)
+			s.state.Stats.System.loadStats(c.DownloadDirectory, &s.state)
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -207,6 +210,16 @@ func (s *Server) Run(version string) error {
 		return server.ListenAndServeTLS(s.CertPath, s.KeyPath)
 	}
 	return server.ListenAndServe()
+}
+
+// initSync wires the embedded velox.State to this struct once, so every
+// connection subscribes to the same state and later Push calls reach them.
+// velox.Sync(gostruct, ...) would build a fresh State per connection, which
+// only ever sends the snapshot taken on connect.
+func (s *Server) initSync() {
+	// SyncHandler sets s.state.Data to a marshaller of the whole struct and
+	// initialises it; /sync still goes through s.state.Handle for the Users map
+	velox.SyncHandler(&s.state)
 }
 
 // listenHost keeps an instance with no password off the network unless the
@@ -268,7 +281,9 @@ func (s *Server) reconfigure(c engine.Config) error {
 	os.WriteFile(s.ConfigPath, b, 0600)
 	// WriteFile keeps an existing file's mode, and older installs wrote 0755
 	os.Chmod(s.ConfigPath, 0600)
+	s.state.Lock()
 	s.state.Config = c
+	s.state.Unlock()
 	s.state.Push()
 	return nil
 }
@@ -281,15 +296,19 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	//handle realtime client connections
 	if r.URL.Path == "/sync" {
-		conn, err := velox.Sync(&s.state, w, r)
+		conn, err := s.state.Handle(w, r)
 		if err != nil {
 			log.Printf("sync failed: %s", err)
 			return
 		}
+		s.state.Lock()
 		s.state.Users[conn.ID()] = r.RemoteAddr
+		s.state.Unlock()
 		s.state.Push()
 		conn.Wait()
+		s.state.Lock()
 		delete(s.state.Users, conn.ID())
+		s.state.Unlock()
 		s.state.Push()
 		return
 	}

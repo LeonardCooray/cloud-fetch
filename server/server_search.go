@@ -68,7 +68,9 @@ func (s *Server) fetchSearchConfig() error {
 	if err := s.scraper.LoadConfig(newConfig); err != nil {
 		return err
 	}
+	s.state.Lock()
 	s.state.SearchProviders = s.scraper.Config
+	s.state.Unlock()
 	s.state.Push()
 	currentConfig = newConfig
 	log.Printf("Loaded new search providers")
