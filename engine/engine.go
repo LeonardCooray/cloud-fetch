@@ -88,7 +88,8 @@ func (e *Engine) Close() {
 }
 
 // closeClientLocked stops verifications before closing: anacrolix/torrent
-// v1.59.1 leaks the client lock if a piece check starts on a closed torrent.
+// leaks the client lock if a piece check starts on a closed torrent
+// (anacrolix #1119, unfixed as of v1.61.0 and master d913b30f520e).
 // Afterwards the engine has no client until install gives it one.
 func (e *Engine) closeClientLocked() {
 	if e.client == nil {
