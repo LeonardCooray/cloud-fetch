@@ -41,16 +41,12 @@ function exited(proc) {
   return new Promise((r) => proc.once("exit", r));
 }
 
-export const test = base.extend({
-  serverOptions: [{}, { option: true }],
-
-  app: async ({ serverOptions }, use) => {
-    const dir = await mkdtemp(join(tmpdir(), "cf-e2e-"));
-    const downloads = join(dir, "downloads");
-    await mkdir(downloads);
-    const search = await startFakeSearch();
+// startServer launches the binary on fresh ports. freePort only proves a
+// port was free a moment ago (and only for TCP, while the engine also binds
+// UDP), so a bind collision is retried with new ports.
+async function startServer({ dir, downloads, configPath, search, serverOptions }, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
     const port = await freePort();
-    const configPath = join(dir, "cloud-fetch.json");
     await writeFile(configPath, JSON.stringify({
       AutoStart: true,
       DisableEncryption: false,
@@ -68,14 +64,38 @@ export const test = base.extend({
     const url = `http://127.0.0.1:${port}/`;
     try {
       await waitForHttp(url, proc, logs);
+      return { proc, url, logs };
+    } catch (e) {
+      proc.kill("SIGTERM");
+      await exited(proc);
+      if (attempt >= attempts || !logs.join("").includes("address already in use")) throw e;
+    }
+  }
+}
+
+export const test = base.extend({
+  serverOptions: [{}, { option: true }],
+
+  app: async ({ serverOptions }, use) => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-e2e-"));
+    const downloads = join(dir, "downloads");
+    await mkdir(downloads);
+    const search = await startFakeSearch();
+    const configPath = join(dir, "cloud-fetch.json");
+    let proc;
+    try {
+      let url, logs;
+      ({ proc, url, logs } = await startServer({ dir, downloads, configPath, search, serverOptions }));
       const addTorrent = async (buf) => {
         const res = await fetch(url + "api/torrentfile", { method: "POST", body: buf });
         if (!res.ok) throw new Error(`add torrent: ${res.status} ${await res.text()}`);
       };
       await use({ url, downloads, addTorrent, logs });
     } finally {
-      proc.kill("SIGTERM");
-      await exited(proc);
+      if (proc) {
+        proc.kill("SIGTERM");
+        await exited(proc);
+      }
       await search.close();
       await rm(dir, { recursive: true, force: true });
     }
