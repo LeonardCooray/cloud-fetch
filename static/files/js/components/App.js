@@ -24,6 +24,8 @@ export function App({ api }) {
   const report = (e) => setError((e && e.message) || String(e));
   useEffect(() => api.onBusy(setBusy), [api]);
   const stats = state.Stats || {};
+  // the engine only uploads a finished torrent with both switches on
+  const seeding = Boolean(state.Config && state.Config.EnableUpload && state.Config.EnableSeeding);
   useEffect(() => {
     if (stats.Title) document.title = stats.Title;
   }, [stats.Title]);
@@ -40,7 +42,7 @@ export function App({ api }) {
     ${configOpen && state.Config && html`<${ConfigForm} config=${state.Config} api=${api} onError=${report} onClose=${() => setConfigOpen(false)} />`}
     <${OmniBar} api=${api} providers=${state.SearchProviders} editorOpen=${editorOpen} setEditorOpen=${setEditorOpen} onError=${report} />
     ${error && html`<${ErrorBanner} message=${error} onDismiss=${() => setError(null)} />`}
-    <${TorrentList} torrents=${state.Torrents} api=${api} onError=${report} />
+    <${TorrentList} torrents=${state.Torrents} seeding=${seeding} api=${api} onError=${report} />
     <${DownloadTree} root=${state.Downloads} torrents=${state.Torrents} system=${stats.System} api=${api} onError=${report} />
     <${Footer} stats=${stats} users=${state.Users} />
   `;

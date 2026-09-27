@@ -6,7 +6,7 @@ const OUT = fileURLToPath(new URL("../../docs/screenshot.png", import.meta.url))
 
 // Regenerates the README screenshot: SCREENSHOT=1 npx playwright test screenshot
 test.skip(!process.env.SCREENSHOT, "set SCREENSHOT=1 to regenerate docs/screenshot.png");
-test.use({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 2 });
+test.use({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 2, serverOptions: { seeding: true } });
 
 test("README screenshot", async ({ page, app }) => {
   const show = makeTorrent("Big Buck Bunny (2008)", [

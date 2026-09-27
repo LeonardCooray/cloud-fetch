@@ -98,3 +98,16 @@ test("eta only counts the selected files still to download", () => {
   const torrent = t({ Size: 11200 * MB, Downloaded: 600 * MB, Percent: 5.35, DownloadRate: MB, Files });
   assert.equal(eta(torrent), "about 10 min left");
 });
+
+test("a complete, running torrent only reads Seeding when the engine uploads", () => {
+  const done = t({ Started: true, Percent: 100, Size: 12 * MB });
+  assert.equal(torrentStatus(done, { seeding: true }), "seeding");
+  assert.equal(torrentStatus(done, { seeding: false }), "done");
+  assert.deepEqual(statusLine(done, { seeding: false }), { main: "12 MB · complete", rate: null, note: null });
+});
+
+test("the seeding flag doesn't touch unfinished or paused torrents", () => {
+  assert.equal(torrentStatus(t({ Started: true, Percent: 40 }), { seeding: false }), "downloading");
+  assert.equal(torrentStatus(t({ Started: false, Percent: 40 }), { seeding: false }), "paused");
+  assert.equal(torrentStatus(t({ Loaded: false }), { seeding: false }), "loading");
+});

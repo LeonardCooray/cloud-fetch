@@ -69,7 +69,18 @@ export function absoluteHref(path, base) {
 // ends up in IDM.
 export function finishedFiles(node, path, torrents) {
   if (isDir(node)) return node.Children.flatMap((c) => finishedFiles(c, childPath(path, c.Name), torrents));
-  if (path.endsWith(".part")) return [];
+  return isFinished(path, torrents) ? [path] : [];
+}
+
+// hasFinishedFile decides whether a row gets a copy button. It runs for
+// every folder on every push, so it stops at the first finished file.
+export function hasFinishedFile(node, path, torrents) {
+  if (isDir(node)) return node.Children.some((c) => hasFinishedFile(c, childPath(path, c.Name), torrents));
+  return isFinished(path, torrents);
+}
+
+function isFinished(path, torrents) {
+  if (path.endsWith(".part")) return false;
   const match = findTorrentFile(torrents, path);
-  return !match || match.file.Percent >= 100 ? [path] : [];
+  return !match || match.file.Percent >= 100;
 }

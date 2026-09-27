@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   childPath, downloadHref, isDir, previewKind, fileIcon,
   findTorrentFile, isDownloading, startsClosed, sortTorrents,
-  absoluteHref, finishedFiles,
+  absoluteHref, finishedFiles, hasFinishedFile,
 } from "./tree.js";
 
 test("childPath joins relative to the download root", () => {
@@ -141,4 +141,22 @@ test("finishedFiles skips a .part file a started torrent is still writing", () =
 
 test("absoluteHref never carries credentials from the page URL", () => {
   assert.equal(absoluteHref("a.iso", "http://leo:secret@h:3000/"), "http://h:3000/download/a.iso");
+});
+
+test("hasFinishedFile says whether a folder has anything to copy", () => {
+  assert.equal(hasFinishedFile(tree, "Show", {}), true);
+  assert.equal(hasFinishedFile({ Name: "Empty", Children: [] }, "Empty", {}), false);
+  const partOnly = { Name: "Show", Children: [{ Name: "E02.mkv.part", Children: null }] };
+  assert.equal(hasFinishedFile(partOnly, "Show", {}), false);
+  const busy = torrent([{ Path: "a.iso", Percent: 10 }]);
+  assert.equal(hasFinishedFile({ Name: "a.iso", Children: null }, "a.iso", busy), false);
+});
+
+test("hasFinishedFile stops at the first finished file", () => {
+  let visited = 0;
+  const counting = (name) => ({ Name: name, Children: null, get Size() { return 0; } });
+  const children = [counting("a"), counting("b"), counting("c")];
+  const torrents = new Proxy({}, { ownKeys() { visited++; return []; } });
+  assert.equal(hasFinishedFile({ Name: "Show", Children: children }, "Show", torrents), true);
+  assert.equal(visited, 1, "only the first file was looked up");
 });

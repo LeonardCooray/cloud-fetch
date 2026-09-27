@@ -1,19 +1,33 @@
 import { test, expect } from "../fixtures.mjs";
 import { makeTorrent, writeData } from "../lib/torrent.mjs";
 
-test("a complete torrent seeds, pauses to Done and resumes", async ({ page, app }) => {
-  const t = makeTorrent("Fixture Show", [{ path: "E01.mkv", size: 32768 }, { path: "E02.mkv", size: 32768 }]);
+test.describe("with seeding on", () => {
+  test.use({ serverOptions: { seeding: true } });
+
+  test("a complete torrent seeds, pauses to Done and resumes", async ({ page, app }) => {
+    const t = makeTorrent("Fixture Show", [{ path: "E01.mkv", size: 32768 }, { path: "E02.mkv", size: 32768 }]);
+    await writeData(app.downloads, t);
+    await app.addTorrent(t.torrent);
+    const card = page.getByRole("article", { name: "Fixture Show" });
+    await expect(card.locator(".badge")).toHaveText("Seeding", { timeout: 30_000 });
+    await expect(card.locator(".status")).toHaveText("65.5 KB · complete");
+    await card.getByRole("button", { name: "Pause" }).click();
+    await expect(card.locator(".badge")).toHaveText("Done");
+    await expect(card.getByRole("button", { name: "Remove" })).toBeVisible();
+    await card.getByRole("button", { name: "Resume" }).click();
+    await expect(card.locator(".badge")).toHaveText("Seeding");
+    await expect(card.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  });
+});
+
+test("a complete torrent reads Done while running when seeding is off", async ({ page, app }) => {
+  const t = makeTorrent("Quiet Show", [{ path: "E01.mkv", size: 16384 }]);
   await writeData(app.downloads, t);
   await app.addTorrent(t.torrent);
-  const card = page.getByRole("article", { name: "Fixture Show" });
-  await expect(card.locator(".badge")).toHaveText("Seeding", { timeout: 30_000 });
-  await expect(card.locator(".status")).toHaveText("65.5 KB · complete");
-  await card.getByRole("button", { name: "Pause" }).click();
-  await expect(card.locator(".badge")).toHaveText("Done");
-  await expect(card.getByRole("button", { name: "Remove" })).toBeVisible();
-  await card.getByRole("button", { name: "Resume" }).click();
-  await expect(card.locator(".badge")).toHaveText("Seeding");
-  await expect(card.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  const card = page.getByRole("article", { name: "Quiet Show" });
+  await expect(card.locator(".badge")).toHaveText("Done", { timeout: 30_000 });
+  await expect(card.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(card.locator(".status")).toHaveText("16.4 KB · complete");
 });
 
 test("an incomplete torrent downloads, waits for peers and pauses", async ({ page, app }) => {

@@ -9,7 +9,8 @@ export const STATUS_LABELS = {
 };
 
 // torrentStatus derives a torrent's state from the fields the server already
-// sends; a complete torrent that is still started is seeding.
+// sends. A complete torrent that is still started is seeding only when the
+// engine uploads (EnableUpload and EnableSeeding); otherwise it's done.
 // selection sums the files ticked for download. Percent counts unticked
 // files too, so a torrent whose selected files are all complete is finished
 // even though Percent never reaches 100. Null when nothing is selected.
@@ -25,11 +26,11 @@ function selection(t) {
   return { size, left, complete: picked.every((f) => (f.Percent || 0) >= 100) };
 }
 
-export function torrentStatus(t) {
+export function torrentStatus(t, { seeding = true } = {}) {
   if (!t || !t.Loaded) return "loading";
   const picked = selection(t);
   const complete = picked ? picked.complete : (t.Percent || 0) >= 100;
-  if (t.Started) return complete ? "seeding" : "downloading";
+  if (t.Started) return complete ? (seeding ? "seeding" : "done") : "downloading";
   return complete ? "done" : "paused";
 }
 
@@ -52,8 +53,8 @@ export function eta(t) {
 
 // statusLine splits the card's status text so the rate can be emphasised.
 // Percent is floored so an unfinished torrent never reads 100%.
-export function statusLine(t) {
-  const status = torrentStatus(t);
+export function statusLine(t, options) {
+  const status = torrentStatus(t, options);
   if (status === "loading") return { main: "", rate: null, note: null };
   if (status === "seeding" || status === "done") {
     const picked = selection(t);

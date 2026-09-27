@@ -3,7 +3,7 @@ import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { ago, bytes } from "../lib/format.js";
 import {
-  absoluteHref, childPath, downloadHref, fileIcon, findTorrentFile, finishedFiles,
+  absoluteHref, childPath, downloadHref, fileIcon, findTorrentFile, finishedFiles, hasFinishedFile,
   isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
 import { CopyButton } from "./CopyButton.js";
@@ -30,7 +30,7 @@ function TreeNode({ node, path, torrents, api, onError }) {
   const kind = dir ? null : previewKind(path);
   const downloading = !dir && isDownloading(findTorrentFile(torrents, path));
   const href = downloadHref(path);
-  const finished = finishedFiles(node, path, torrents);
+  const canCopy = hasFinishedFile(node, path, torrents);
   const linksOf = (paths) => paths.map((p) => absoluteHref(p, window.location.href)).join("\n");
 
   useEffect(() => {
@@ -71,11 +71,11 @@ function TreeNode({ node, path, torrents, api, onError }) {
       ${downloading ? html`<span class="label">${node.Name}</span>` : html`<a class="label" href=${href}>${node.Name}</a>`}
       ${!downloading && html`<span class="controls">
         ${dir
-          ? finished.length > 0 && html`<${CopyButton} title="Copy links"
+          ? canCopy && html`<${CopyButton} title="Copy links"
               getText=${() => linksOf(finishedFiles(node, path, torrents))}
               label=${"Copy all links in " + node.Name}
               done=${(text) => "Copied " + text.split("\n").length} />`
-          : finished.length > 0 && html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
+          : canCopy && html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
               label=${"Copy link to " + node.Name} done="Copied" />`}
         ${kind && html`<button type="button" class=${"icon-btn" + (preview ? " on" : "")} aria-pressed=${preview}
           aria-label=${(preview ? "Hide preview of " : "Preview ") + node.Name} onClick=${() => setPreview(!preview)}>
