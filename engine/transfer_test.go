@@ -290,3 +290,12 @@ func TestDisableEncryptionForcesPlaintext(t *testing.T) {
 		t.Fatalf("DisableEncryption policy %+v, want plaintext only", off.HeaderObfuscationPolicy)
 	}
 }
+
+// anacrolix/torrent's connection writer can miss a wake-up and then sits
+// until its keepalive timer, holding back a piece that's ready to send. The
+// default timer is a minute; the transfer tests stalled on it under load.
+func TestKeepAliveTimeoutBoundsAMissedWriterWakeup(t *testing.T) {
+	if got := clientConfig(Config{}).KeepAliveTimeout; got <= 0 || got > 5*time.Second {
+		t.Fatalf("KeepAliveTimeout %s, want at most 5s", got)
+	}
+}

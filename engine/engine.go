@@ -88,7 +88,8 @@ func (e *Engine) Close() {
 }
 
 // closeClientLocked stops verifications before closing: anacrolix/torrent
-// v1.59.1 leaks the client lock if a piece check starts on a closed torrent.
+// leaks the client lock if a piece check starts on a closed torrent
+// (anacrolix #1119, unfixed as of v1.61.0 and master d913b30f520e).
 // Afterwards the engine has no client until install gives it one.
 func (e *Engine) closeClientLocked() {
 	if e.client == nil {
@@ -108,6 +109,13 @@ func clientConfig(c Config) *torrent.ClientConfig {
 	config.NoUpload = !c.EnableUpload
 	config.Seed = c.EnableSeeding
 	config.ListenPort = c.IncomingPort
+	// anacrolix/torrent's connection writer arms its wake-up after checking
+	// for work, so data queued in between waits for this timer (anacrolix
+	// #1070, fixed on master by #1078 but in no release up to v1.61.0). The
+	// 1 minute default stalled downloads; 5s bounds it at the cost of a
+	// 4-byte keepalive per idle connection every 5s. Drop this once a release
+	// with #1078 is in go.mod.
+	config.KeepAliveTimeout = 5 * time.Second
 	if c.DisableEncryption {
 		config.HeaderObfuscationPolicy = torrent.HeaderObfuscationPolicy{Preferred: false, RequirePreferred: true}
 	}
