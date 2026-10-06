@@ -15,6 +15,7 @@ type stats struct {
 	CPU         float64 `json:"cpu"`
 	DiskUsed    int64   `json:"diskUsed"`
 	DiskTotal   int64   `json:"diskTotal"`
+	DiskFree    int64   `json:"diskFree"`
 	MemoryUsed  int64   `json:"memoryUsed"`
 	MemoryTotal int64   `json:"memoryTotal"`
 	GoMemory    int64   `json:"goMemory"`
@@ -35,6 +36,9 @@ func (s *stats) loadStats(diskDir string, l sync.Locker) {
 	if stat, err := disk.Usage(diskDir); err == nil {
 		next.DiskUsed = int64(stat.Used)
 		next.DiskTotal = int64(stat.Total)
+		// Total-Used would count blocks reserved for root (5% on ext4 by
+		// default), which the unprivileged service user can't write to.
+		next.DiskFree = int64(stat.Free)
 	}
 	//count memory usage
 	if stat, err := mem.VirtualMemory(); err == nil {

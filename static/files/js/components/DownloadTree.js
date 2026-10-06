@@ -100,7 +100,7 @@ function TreeNode({ node, path, files, api, onError }) {
 export function DownloadTree({ root, torrents, system, api, onError }) {
   const children = (root && root.Children) || [];
   const files = indexTorrentFiles(torrents);
-  const free = system && system.set ? `${bytes(system.diskTotal - system.diskUsed)} free` : "";
+  const free = system && system.set ? `${bytes(system.diskFree)} free` : "";
   return html`<section class="downloads">
     <div class="section-header"><h3>Downloads</h3><span class="muted">${free}</span></div>
     ${children.length === 0
