@@ -28,17 +28,17 @@ import (
 // Server is the "State" portion of the diagram
 type Server struct {
 	//config
-	Title      string `help:"Title of this instance" env:"TITLE"`
-	Port       int    `help:"Listening port" env:"PORT"`
+	Title      string `help:"Title of this instance" opts:"env=TITLE"`
+	Port       int    `help:"Listening port" opts:"env=PORT"`
 	Host       string `help:"Listening interface (default: all with --auth, localhost only without)"`
-	Auth       string `help:"Optional basic auth in form 'user:password'" env:"AUTH"`
+	Auth       string `help:"Optional basic auth in form 'user:password'" opts:"env=AUTH"`
 	ConfigPath string `help:"Configuration file path"`
 	KeyPath    string `help:"TLS Key file path"`
 	CertPath   string `help:"TLS Certicate file path" short:"r"`
 	Log        bool   `help:"Enable request logging"`
 	Open       bool   `help:"Open now with your default browser"`
 	//let's encrypt
-	Domain        string `help:"Serve HTTPS with a free, auto-renewing Let's Encrypt certificate for this domain (needs --http-port reachable from the internet)" env:"DOMAIN" opts:"short=-"`
+	Domain        string `help:"Serve HTTPS with a free, auto-renewing Let's Encrypt certificate for this domain (needs --http-port reachable from the internet)" opts:"short=-,env=DOMAIN"`
 	HTTPPort      int    `help:"Plain HTTP port for Let's Encrypt checks and the redirect to HTTPS (only with --domain)" opts:"name=http-port,short=-"`
 	CertCache     string `help:"Where to keep Let's Encrypt certificates (default: certs/ next to the config file)" opts:"short=-"`
 	ACMEStaging   bool   `help:"Use Let's Encrypt's staging server (untrusted test certificates, generous rate limits)" opts:"name=acme-staging,short=-"`
