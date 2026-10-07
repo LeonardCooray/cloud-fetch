@@ -191,6 +191,8 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
   color: var(--muted); font-size: 12px; font-weight: 500; text-align: center; font-variant-numeric: tabular-nums;
 }
 .count:empty { display: none; }
+/* phones hide the pill's free space, so it shows here instead */
+.section-header .free { display: none; margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .empty { margin: 0; padding: 18px; border-style: dashed; border-radius: var(--radius); color: var(--muted); text-align: center; }
 
@@ -217,7 +219,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
 }
 .overlay {
-  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 6px;
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
   border-radius: var(--radius); background: var(--overlay); color: var(--muted); pointer-events: none;
 }
 .progress { height: 6px; margin: 12px 0 8px; overflow: hidden; border-radius: 999px; background: var(--raised); }
@@ -296,6 +298,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 @media (max-width: 600px) {
   .container { padding: 12px 10px 20px; }
   .pill-free { display: none; }
+  .section-header .free { display: inline; }
   .torrent .buttons { width: 100%; gap: 6px; }
   .torrent .buttons button {
     flex: 1 1 0; min-height: 36px; padding: 6px 10px; gap: 6px;

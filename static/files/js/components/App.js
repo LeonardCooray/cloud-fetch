@@ -45,7 +45,7 @@ export function App({ api }) {
     <${OmniBar} api=${api} providers=${state.SearchProviders} editorOpen=${editorOpen} setEditorOpen=${setEditorOpen} onError=${report} />
     ${error && html`<${ErrorBanner} message=${error} onDismiss=${() => setError(null)} />`}
     <${TorrentList} torrents=${state.Torrents} seeding=${seeding} api=${api} onError=${report} />
-    <${DownloadTree} root=${state.Downloads} torrents=${state.Torrents} api=${api} onError=${report} />
+    <${DownloadTree} root=${state.Downloads} torrents=${state.Torrents} system=${stats.System} api=${api} onError=${report} />
     <${Footer} stats=${stats} users=${state.Users} />
   `;
 }
