@@ -8,6 +8,7 @@ import { OmniBar } from "./OmniBar.js";
 import { TorrentList } from "./TorrentList.js";
 import { DownloadTree } from "./DownloadTree.js";
 import { ConfigForm } from "./ConfigForm.js";
+import { totalRate } from "../lib/status.js";
 
 export function App({ api }) {
   const { state, connected, everConnected } = useSync();
@@ -32,6 +33,7 @@ export function App({ api }) {
 
   return html`
     <${Header} title=${stats.Title} busy=${busy} connected=${connected}
+      rate=${totalRate(state.Torrents)} system=${stats.System}
       configOpen=${configOpen} editorOpen=${editorOpen}
       onToggleConfig=${() => setConfigOpen(!configOpen)}
       onToggleEditor=${() => setEditorOpen(!editorOpen)} />
