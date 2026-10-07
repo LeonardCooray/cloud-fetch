@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STATUS_LABELS, torrentStatus, eta, statusLine } from "./status.js";
+import { STATUS_LABELS, torrentStatus, eta, statusLine, totalRate } from "./status.js";
 
 const GB = 1e9;
 const MB = 1e6;
@@ -110,4 +110,16 @@ test("the seeding flag doesn't touch unfinished or paused torrents", () => {
   assert.equal(torrentStatus(t({ Started: true, Percent: 40 }), { seeding: false }), "downloading");
   assert.equal(torrentStatus(t({ Started: false, Percent: 40 }), { seeding: false }), "paused");
   assert.equal(torrentStatus(t({ Loaded: false }), { seeding: false }), "loading");
+});
+
+test("totalRate sums the download rate of running torrents only", () => {
+  assert.equal(totalRate(null), 0);
+  assert.equal(totalRate({}), 0);
+  assert.equal(totalRate({
+    a: t({ DownloadRate: 2 * MB }),
+    b: t({ DownloadRate: 0.5 * MB }),
+    paused: t({ Started: false, DownloadRate: 9 * MB }),
+    loading: t({ Loaded: false, DownloadRate: 9 * MB }),
+    junk: t({ DownloadRate: NaN }),
+  }), 2.5 * MB);
 });

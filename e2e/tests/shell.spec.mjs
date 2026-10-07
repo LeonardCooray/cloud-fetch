@@ -9,7 +9,7 @@ test("the page loads connected, with the empty states", async ({ page }) => {
 test("the light theme applies by default", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   const bg = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
-  expect(bg).toBe("rgb(246, 247, 249)");
+  expect(bg).toBe("rgb(244, 245, 250)");
 });
 
 test("the dark theme follows the system setting", async ({ page }) => {
@@ -18,5 +18,5 @@ test("the dark theme follows the system setting", async ({ page }) => {
     const root = getComputedStyle(document.documentElement);
     return { bg: root.backgroundColor, text: root.color };
   });
-  expect(colors).toEqual({ bg: "rgb(15, 18, 23)", text: "rgb(230, 233, 239)" });
+  expect(colors).toEqual({ bg: "rgb(11, 13, 20)", text: "rgb(236, 238, 245)" });
 });

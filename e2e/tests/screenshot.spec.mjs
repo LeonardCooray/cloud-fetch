@@ -9,6 +9,8 @@ test.skip(!process.env.SCREENSHOT, "set SCREENSHOT=1 to regenerate docs/screensh
 test.use({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 2, serverOptions: { seeding: true } });
 
 test("README screenshot", async ({ page, app }) => {
+  // dark is the look the UI is designed around; no motion so nothing is caught mid-transition
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   const show = makeTorrent("Big Buck Bunny (2008)", [
     { path: "Big Buck Bunny.mp4", size: 16384 * 6 },
     { path: "Big Buck Bunny.en.srt", size: 16384 },
@@ -27,5 +29,6 @@ test("README screenshot", async ({ page, app }) => {
   await debian.getByRole("button", { name: "Pause" }).click();
   await expect(debian.locator(".badge")).toHaveText("Done");
   await page.getByRole("article", { name: "Big Buck Bunny (2008)" }).getByRole("button", { name: "Files" }).click();
+  await page.mouse.move(0, 0);
   await page.screenshot({ path: OUT, fullPage: true });
 });

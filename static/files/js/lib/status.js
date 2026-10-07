@@ -65,3 +65,14 @@ export function statusLine(t, options) {
   const rate = t.DownloadRate || 0;
   return { main, rate: `${bytes(rate)}/s`, note: rate > 0 ? eta(t) : "waiting for peers" };
 }
+
+// totalRate is the header's overall download speed. The engine only reports
+// a per-torrent DownloadRate, so it's summed here; a stopped or loading
+// torrent can hold a stale rate, so only running ones count.
+export function totalRate(torrents) {
+  let sum = 0;
+  for (const t of Object.values(torrents || {})) {
+    if (t && t.Loaded && t.Started && Number.isFinite(t.DownloadRate)) sum += t.DownloadRate;
+  }
+  return sum;
+}

@@ -18,14 +18,13 @@ function TorrentCard({ t, seeding, api, onError }) {
         <div class="name">${t.Name || t.InfoHash} <span class=${"badge badge-" + status}>${STATUS_LABELS[status]}</span></div>
       </div>
       <div class="buttons">
-        <button type="button" class=${showFiles ? "on" : ""} aria-pressed=${showFiles} onClick=${() => setShowFiles(!showFiles)}>
-          <${Icon} name="file" /> Files
-        </button>
+        <button type="button" class=${showFiles ? "on" : ""} aria-pressed=${showFiles} title="Files"
+          onClick=${() => setShowFiles(!showFiles)}><${Icon} name="file" /><span class="btn-label">Files</span></button>
         ${t.Started
-          ? html`<button type="button" onClick=${() => act("stop")}><${Icon} name="pause" /> Pause</button>`
-          : html`<button type="button" onClick=${() => act("start")}><${Icon} name="play" /> Resume</button>`}
-        ${!t.Started && html`<button type="button" class="danger" onClick=${() => act("delete")}>
-          <${Icon} name=${t.Loaded ? "trash" : "x"} /> ${t.Loaded ? "Remove" : "Cancel"}
+          ? html`<button type="button" title="Pause" onClick=${() => act("stop")}><${Icon} name="pause" /><span class="btn-label">Pause</span></button>`
+          : html`<button type="button" class="go" title="Resume" onClick=${() => act("start")}><${Icon} name="play" /><span class="btn-label">Resume</span></button>`}
+        ${!t.Started && html`<button type="button" class="danger" title=${t.Loaded ? "Remove" : "Cancel"} onClick=${() => act("delete")}>
+          <${Icon} name=${t.Loaded ? "trash" : "x"} /><span class="btn-label">${t.Loaded ? "Remove" : "Cancel"}</span>
         </button>`}
       </div>
     </div>
@@ -45,7 +44,7 @@ export function TorrentList({ torrents, seeding, api, onError }) {
   return html`<section class="torrents">
     <div class="section-header">
       <h3>Torrents</h3>
-      <span class="muted">${list.length} torrent${list.length === 1 ? "" : "s"}</span>
+      <span class="count">${list.length || ""}</span>
     </div>
     ${list.length === 0
       ? html`<p class="empty">Add torrents above</p>`

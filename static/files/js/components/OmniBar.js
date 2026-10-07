@@ -139,18 +139,19 @@ export function OmniBar({ api, providers, editorOpen, setEditorOpen, onError }) 
     return () => { for (const [t, fn] of on) document.removeEventListener(t, fn); };
   }, []);
 
-  const icon = mode === "search" ? "search" : mode === "empty" ? "upload" : "magnet";
+  const icon = mode === "magnet" || mode === "torrent-url" ? "magnet" : "search";
   const inlineError = inputError || (magnet && magnet.error);
 
   return html`<section class="omni">
     ${editorOpen && html`<${MagnetEditor} magnet=${magnet || BLANK} onChange=${(m) => setText(buildMagnet(m))} />`}
     <div class=${"omni-bar" + (dragging ? " drag" : "")}>
+      <${Icon} name=${icon} class="omni-icon" />
       <input class="omni-input" type="text" aria-label="Search, magnet link or torrent URL"
-        placeholder="Enter search query, magnet URI, torrent URL or drop a torrent file here"
+        placeholder="Search, paste a magnet or torrent URL, or drop a .torrent file"
         value=${text} onInput=${(e) => setText(e.currentTarget.value)}
         onKeyDown=${(e) => { if (e.key === "Enter") submit(); }} />
-      <button type="button" class="icon-btn" aria-label="Upload .torrent files" onClick=${() => fileInput.current.click()}>
-        <${Icon} name=${icon} />
+      <button type="button" class="icon-btn" aria-label="Upload .torrent files" title="Upload .torrent files" onClick=${() => fileInput.current.click()}>
+        <${Icon} name="upload" />
       </button>
       <input ref=${fileInput} type="file" accept=".torrent" multiple hidden
         onChange=${(e) => { upload(e.currentTarget.files); e.currentTarget.value = ""; }} />
