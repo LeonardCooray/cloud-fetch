@@ -1,11 +1,9 @@
 import { html } from "../html.js";
 import { Icon } from "../icons.js";
-import { bytes, systemUsage } from "../lib/format.js";
+import { bytes } from "../lib/format.js";
 
 function StatsPill({ rate, system, connected }) {
-  const usage = systemUsage(system);
-  const tip = usage ? `CPU ${usage.cpu}` + (usage.memory ? ` · memory ${usage.memory} (${usage.memoryDetail})` : "") : null;
-  return html`<div class="pill" title=${tip}>
+  return html`<div class="pill">
     <span class="pill-rate"><${Icon} name="download" />${bytes(rate)}/s</span>
     ${system && system.set && html`<span class="pill-free">${bytes(system.diskFree)} free</span>`}
     <span class=${"dot" + (connected ? " ok" : "")} role="img" aria-label=${connected ? "Connected" : "Disconnected"}></span>
