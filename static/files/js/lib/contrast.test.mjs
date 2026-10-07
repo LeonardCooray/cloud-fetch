@@ -54,3 +54,13 @@ for (const [name, theme] of [["light", light], ["dark", dark]]) {
     assert.deepEqual(failing, []);
   });
 }
+
+// The dark palette is written twice: once for the system preference (unless
+// light is forced) and once for a forced dark theme. They must not drift.
+test("the forced dark theme repeats the system dark palette exactly", () => {
+  const forcedAt = css.indexOf(':root[data-theme="dark"]');
+  assert.ok(forcedAt >= 0, 'no :root[data-theme="dark"] block');
+  const body = (at) => css.slice(css.indexOf("{", at) + 1, css.indexOf("}", at)).replace(/\s+/g, " ").trim();
+  const systemAt = css.indexOf(":root", darkAt);
+  assert.equal(body(forcedAt).replace(/color-scheme: dark; /, ""), body(systemAt));
+});

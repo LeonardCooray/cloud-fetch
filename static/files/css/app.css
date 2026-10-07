@@ -37,8 +37,10 @@
   background-repeat: no-repeat;
   min-height: 100%;
 }
+/* dark follows the system unless light is forced; the forced dark block
+   repeats it (contrast.test.mjs checks they match) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0b0d14;
     --surface: #151926;
     --raised: #1d2232;
@@ -64,6 +66,34 @@
     --bar-glow: 0 0 12px rgba(166, 157, 255, 0.55);
     --overlay: rgba(11, 13, 20, 0.72);
   }
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d14;
+  --surface: #151926;
+  --raised: #1d2232;
+  --text: #eceef5;
+  --muted: #a4abbd;
+  --faint: #9098ab;
+  --border: #262b3b;
+  --accent: #a69dff;
+  --accent-2: #5ee0d6;
+  --accent-bg: #231f45;
+  --on-accent: #0b0d14;
+  --ok: #4ad89a;
+  --ok-bg: #10291f;
+  --danger: #ff8a8a;
+  --danger-bg: #2f1519;
+  --warn: #f2b84b;
+  --warn-bg: #2b2212;
+  --glass: rgba(22, 26, 40, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  --glow: radial-gradient(1100px 560px at 12% -14%, rgba(124, 108, 255, 0.22), transparent 65%),
+    radial-gradient(900px 520px at 96% -10%, rgba(64, 214, 200, 0.14), transparent 60%);
+  --bar-glow: 0 0 12px rgba(166, 157, 255, 0.55);
+  --overlay: rgba(11, 13, 20, 0.72);
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
