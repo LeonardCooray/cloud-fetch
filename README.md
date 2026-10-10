@@ -9,6 +9,7 @@
 * Files already on disk are hash-checked when you add a torrent, so wrong or partial data is downloaded again
 * Optional HTTPS with a free, auto-renewing Let's Encrypt certificate
 * Resumable, seekable downloads (HTTP Range) for download managers and media players
+* Watch a file while it downloads: its link streams it, fetching the pieces just ahead of wherever the player is
 * Embedded torrent search, with the provider list kept in this repo
 * Real-time updates in a mobile-friendly UI
 

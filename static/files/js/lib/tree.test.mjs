@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   childPath, downloadHref, isDir, previewKind, fileIcon,
   indexTorrentFiles, findTorrentFile, isDownloading, startsClosed, sortTorrents,
-  absoluteHref, finishedFiles, hasFinishedFile,
+  absoluteHref, finishedFiles, hasFinishedFile, finalPath,
 } from "./tree.js";
 
 test("childPath joins relative to the download root", () => {
@@ -65,6 +65,12 @@ test("isDownloading only for loaded, started, unfinished files", () => {
   assert.equal(isDownloading({ torrent: { ...t1, Started: false }, file: t1.Files[0] }), false);
   assert.equal(isDownloading({ torrent: { ...t1, Loaded: false }, file: t1.Files[0] }), false);
   assert.equal(isDownloading(null), false);
+});
+
+test("finalPath drops only a trailing .part", () => {
+  assert.equal(finalPath("Show/E02.mkv.part"), "Show/E02.mkv");
+  assert.equal(finalPath("Show/E02.mkv"), "Show/E02.mkv");
+  assert.equal(finalPath("notes.part.txt"), "notes.part.txt");
 });
 
 test("folders untouched for more than a day start closed", () => {
