@@ -278,7 +278,8 @@ func (s *Server) handler() http.Handler {
 			user = s[0]
 			pass = s[1]
 		}
-		h = cookieauth.New().SetUserPass(user, pass).Wrap(h)
+		ca := cookieauth.New().SetUserPass(user, pass)
+		h = newLoginThrottle().wrap(ca.Wrap, h)
 		log.Printf("Enabled HTTP authentication")
 	}
 	if s.Log {

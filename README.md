@@ -185,6 +185,8 @@ Without `--auth` the server only listens on localhost. To expose it, set `--auth
 
 `--auth` uses HTTP basic auth, which browsers, IDM and VLC all support (VLC also accepts `https://user:password@host/...` links). Over plain HTTP that password crosses the network unencrypted, so use HTTPS for anything reachable from the internet.
 
+An address that gets the login wrong 5 times within 15 minutes is locked out for 15 minutes (HTTP 429, and a `Blocked` line in the log); IPv6 addresses are grouped by /64. Opening the page without credentials, which is how the browser shows its login prompt, doesn't count. Credentials that have already worked are never held back, so IDM's parallel connections are fine. The lockout keys on the connecting address, so behind a reverse proxy every client shares one address and five bad logins from anyone lock everyone out.
+
 ### HTTPS with Let's Encrypt
 
 Point a DNS record at the server, open ports 80 and 443, then:
