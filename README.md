@@ -78,20 +78,10 @@ Pin a version by adding a tag, for example `ghcr.io/leonardcooray/cloud-fetch:0.
 
 Any Linux works; Ubuntu 24.04 LTS or Debian 12 are good choices. Run these as root, or put `sudo` in front.
 
-1. Install the binary. Download it from the latest release (use `arm64` instead of `amd64` on an ARM server):
+1. Install the updater, a script that downloads release binaries, checks them against the release checksums and restarts the service (step 4 uses it for the first install too):
 
    ``` sh
-   VERSION=0.1.0
-   curl -fsSL https://github.com/LeonardCooray/cloud-fetch/releases/download/v$VERSION/cloud-fetch_${VERSION}_linux_amd64.gz | gunzip > /usr/local/bin/cloud-fetch && chmod +x /usr/local/bin/cloud-fetch
-   ```
-
-   Or build it from source with a current Go:
-
-   ``` sh
-   curl -fsSL https://go.dev/dl/go1.25.4.linux-amd64.tar.gz | tar -C /usr/local -xz
-   export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
-   go install github.com/LeonardCooray/cloud-fetch@latest
-   install -m 755 ~/go/bin/cloud-fetch /usr/local/bin/cloud-fetch
+   curl -fsSL https://raw.githubusercontent.com/LeonardCooray/cloud-fetch/master/scripts/update.sh -o /usr/local/sbin/cloud-fetch-update && chmod 755 /usr/local/sbin/cloud-fetch-update
    ```
 
 2. Create a user to run it, and keep the login in a file only root can read:
@@ -125,10 +115,10 @@ Any Linux works; Ubuntu 24.04 LTS or Debian 12 are good choices. Run these as ro
 
    For plain HTTP, use `ExecStart=/usr/local/bin/cloud-fetch --port 3000` instead. Settings and downloads land in `/srv/cloud-fetch`, and certificates in `/srv/cloud-fetch/certs`.
 
-4. Start it and watch the log:
+4. Install the latest release binary, start it and watch the log:
 
    ``` sh
-   systemctl daemon-reload && systemctl enable --now cloud-fetch
+   systemctl daemon-reload && systemctl enable cloud-fetch && cloud-fetch-update
    journalctl -u cloud-fetch -f
    ```
 
@@ -142,7 +132,18 @@ Any Linux works; Ubuntu 24.04 LTS or Debian 12 are good choices. Run these as ro
    systemctl daemon-reload && systemctl start cloud-fetch
    ```
 
-To upgrade, replace `/usr/local/bin/cloud-fetch` with the new binary (step 1) and run `systemctl restart cloud-fetch`.
+To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts the service and puts the previous binary back if the new one doesn't stay up. `cloud-fetch-update --check` shows the installed and latest versions, `cloud-fetch-update 0.1.1` installs a specific release, and `cloud-fetch-update --rollback` undoes the last update. To get a newer updater, rerun step 1.
+
+To run a build from source instead of a release, build it with a current Go and copy it over the binary, then restart:
+
+``` sh
+curl -fsSL https://go.dev/dl/go1.25.4.linux-amd64.tar.gz | tar -C /usr/local -xz
+export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+go install github.com/LeonardCooray/cloud-fetch@latest
+install -m 755 ~/go/bin/cloud-fetch /usr/local/bin/cloud-fetch && systemctl restart cloud-fetch
+```
+
+Source builds report version `0.0.0-src` and can be newer than the latest release, so `cloud-fetch-update` won't replace one unless you add `--force`.
 
 ### Usage
 
