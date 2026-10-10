@@ -105,3 +105,25 @@ test("Revoke all share links in Settings stops links already shared", async ({ p
   await expect(page.locator(".share-revoke [aria-live=polite]")).toHaveText("All share links revoked");
   expect((await fetch(link)).status).toBe(403);
 });
+
+test("closing the menu while its links load keeps it closed", async ({ page, app }) => {
+  await mixedShow(app);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route("**/api/share", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const share = page.getByRole("button", { name: "Share E01.mkv" });
+  await share.click();
+  await expect(share).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Escape");
+  await expect(share).toHaveAttribute("aria-expanded", "false");
+  const answered = page.waitForResponse("**/api/share");
+  release();
+  await answered;
+  // give the late links a moment to (wrongly) reopen the menu
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("group", { name: "Share E01.mkv" })).toHaveCount(0);
+  await expect(share).toBeFocused();
+});
