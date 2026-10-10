@@ -27,6 +27,8 @@ jobs:
           fi
       - name: Vet
         run: go vet ./...
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
       - name: Build
         run: go build -v -o /dev/null .
       - name: Test
