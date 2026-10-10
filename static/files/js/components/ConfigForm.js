@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { html } from "../html.js";
 import { addSpaces, inputType } from "../lib/format.js";
 
@@ -64,5 +64,42 @@ export function ConfigForm({ config, api, onError, onClose }) {
       <button type="submit" class="primary" disabled=${saving}>${saving ? "Saving…" : "Save"}</button>
       <button type="button" onClick=${onClose}>Cancel</button>
     </div>
+    <${RevokeShares} api=${api} onError=${onError} />
   </form>`;
+}
+
+// Revoking replaces the signing key, so it takes a second, deliberate click.
+function RevokeShares({ api, onError }) {
+  const [state, setState] = useState("idle"); // idle | armed | revoking | done
+  const armedAt = useRef(0);
+  useEffect(() => {
+    if (state !== "armed" && state !== "done") return undefined;
+    const id = setTimeout(() => setState("idle"), state === "armed" ? 3000 : 4000);
+    return () => clearTimeout(id);
+  }, [state]);
+  const click = async () => {
+    if (state === "idle" || state === "done") {
+      armedAt.current = Date.now();
+      setState("armed");
+      return;
+    }
+    if (state !== "armed" || Date.now() - armedAt.current < 400) return;
+    setState("revoking");
+    try {
+      await api.revokeShares();
+      setState("done");
+    } catch (e) {
+      setState("idle");
+      onError(e);
+    }
+  };
+  return html`<div class="share-revoke">
+    <h4>Share links</h4>
+    <p class="muted">Share links work without a login until they expire. Revoking stops every link shared so far.</p>
+    <button type="button" class="danger" disabled=${state === "revoking"} onClick=${click}>
+      ${state === "armed" ? "Click again to revoke all" : state === "revoking" ? "Revoking…" : "Revoke all share links"}
+    </button>
+    <span class="sr-only" aria-live="polite">${state === "done" ? "All share links revoked" : ""}</span>
+    ${state === "done" && html`<span class="muted" aria-hidden="true"> All share links revoked</span>`}
+  </div>`;
 }

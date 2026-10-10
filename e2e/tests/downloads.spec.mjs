@@ -15,8 +15,9 @@ async function grantClipboard(page, app) {
 }
 
 const row = (page, name) => page.locator(".node > .row", { hasText: name });
-// the live region is what announces a copy; the button keeps its name
-const announced = (scope) => scope.locator('[aria-live="polite"]');
+// the live region is what announces a copy; the button keeps its name. Copy
+// comes before Share, which has a live region of its own.
+const announced = (scope) => scope.locator(".copy").first().locator('[aria-live="polite"]');
 
 test("Copy link puts the file's absolute link on the clipboard", async ({ page, app }) => {
   await grantClipboard(page, app);
