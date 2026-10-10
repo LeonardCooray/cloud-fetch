@@ -1,12 +1,14 @@
 # build stage
 FROM golang:alpine AS build
-RUN apk update && apk add git
+# the release workflow passes the tag's version; the build context has no
+# git history to read it from
+ARG VERSION=0.0.0-src
 ADD . /src
 WORKDIR /src
 ENV CGO_ENABLED 0
 RUN go build \
   -trimpath \
-  -ldflags "-s -w -X main.version=$(git describe --abbrev=0 --tags)" \
+  -ldflags "-s -w -X main.version=${VERSION}" \
   -o /tmp/bin
 # run stage
 FROM scratch
