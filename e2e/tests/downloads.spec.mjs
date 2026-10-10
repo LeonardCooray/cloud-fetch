@@ -2,11 +2,12 @@ import { test, expect } from "../fixtures.mjs";
 import { makeTorrent, writeData } from "../lib/torrent.mjs";
 
 // E01 is complete; E02 has only its first piece, so the torrent keeps
-// downloading it and its row shows no link or copy button.
+// downloading it and its row links to the stream.
 async function mixedShow(app) {
   const t = makeTorrent("Mixed Show", [{ path: "E01.mkv", size: 32768 }, { path: "E02.mkv", size: 32768 }]);
   await writeData(app.downloads, t, { partial: { "E02.mkv": 16384 } });
   await app.addTorrent(t.torrent);
+  return t;
 }
 
 async function grantClipboard(page, app) {
@@ -29,11 +30,25 @@ test("Copy link puts the file's absolute link on the clipboard", async ({ page, 
   await expect(row(page, "E01.mkv").locator(".copied-text")).toHaveCount(0, { timeout: 4000 });
 });
 
-test("a file that is still downloading has no copy button", async ({ page, app }) => {
-  await mixedShow(app);
-  await expect(row(page, "E02.mkv")).toBeVisible();
+// The link is the final name whatever the file is called on disk, and the
+// row has no Delete while the torrent still writes it.
+test("a file that is still downloading links to its stream", async ({ page, app }) => {
+  const t = await mixedShow(app);
   await expect(page.getByRole("article", { name: "Mixed Show" }).locator(".badge")).toHaveText("Downloading");
-  await expect(row(page, "E02.mkv").getByRole("button", { name: /^Copy/ })).toHaveCount(0);
+  const link = row(page, "E02.mkv").locator("a.label");
+  await expect(link).toHaveAttribute("href", "download/Mixed%20Show/E02.mkv");
+  await expect(row(page, "E02.mkv").getByRole("button", { name: "Copy link to E02.mkv" })).toBeVisible();
+  await expect(row(page, "E02.mkv").getByRole("button", { name: "Preview E02.mkv" })).toBeVisible();
+  await expect(row(page, "E02.mkv").getByRole("button", { name: /^Delete/ })).toHaveCount(0);
+
+  // the first piece is the one on disk, so it comes back without peers
+  const res = await page.evaluate(async (href) => {
+    const r = await fetch(href, { headers: { Range: "bytes=0-16383" } });
+    return { status: r.status, range: r.headers.get("Content-Range"), body: Array.from(new Uint8Array(await r.arrayBuffer())) };
+  }, await link.getAttribute("href"));
+  expect(res.status).toBe(206);
+  expect(res.range).toBe("bytes 0-16383/32768");
+  expect(Buffer.from(res.body).equals(t.files[1].data.subarray(0, 16384))).toBe(true);
 });
 
 test("Copy all copies only the folder's finished files, one per line", async ({ page, app }) => {

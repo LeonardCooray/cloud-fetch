@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/LeonardCooray/cloud-fetch/engine"
 	"github.com/jpillora/archive"
 )
 
@@ -46,6 +48,11 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid path", http.StatusBadRequest)
 			return
 		}
+		// an unfinished file is read through the torrent, since its bytes on
+		// disk have holes where pieces haven't arrived
+		if r.Method == "GET" && s.serveStream(w, r, dldir, file) {
+			return
+		}
 		info, err := os.Stat(file)
 		if err != nil {
 			http.Error(w, "File stat error: "+err.Error(), http.StatusBadRequest)
@@ -79,6 +86,35 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.static.ServeHTTP(w, r)
+}
+
+// serveStream reports whether it handled the request: false means no torrent
+// is still downloading file, so it's served from disk.
+func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, dldir, file string) bool {
+	rel, err := filepath.Rel(dldir, file)
+	if err != nil {
+		return false
+	}
+	st, ok, err := s.engine.StreamFile(r.Context(), filepath.ToSlash(rel))
+	if errors.Is(err, engine.ErrStreamPaused) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return true
+	}
+	if !ok {
+		return false
+	}
+	defer st.Close()
+	name := strings.TrimSuffix(filepath.Base(file), ".part")
+	// set up front: ServeContent would otherwise sniff the first 512 bytes,
+	// making even a mid-file Range request wait for the first piece
+	ctype := mime.TypeByExtension(filepath.Ext(name))
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ctype)
+	// zero modtime: there's no finished file to date yet, so no Last-Modified
+	http.ServeContent(w, r, name, time.Time{}, st)
+	return true
 }
 
 // insideDir reports whether p is strictly below dir. A plain prefix check

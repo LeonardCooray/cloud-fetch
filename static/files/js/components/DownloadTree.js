@@ -3,7 +3,7 @@ import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { ago, bytes } from "../lib/format.js";
 import {
-  absoluteHref, childPath, downloadHref, fileIcon, findTorrentFile, finishedFiles, hasFinishedFile,
+  absoluteHref, childPath, downloadHref, fileIcon, finalPath, findTorrentFile, finishedFiles, hasFinishedFile,
   indexTorrentFiles, isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
 import { CopyButton } from "./CopyButton.js";
@@ -27,10 +27,11 @@ function TreeNode({ node, path, files, api, onError }) {
   const armedAt = useRef(0);
   const settle = useRef(0);
   useEffect(() => () => clearTimeout(settle.current), []);
-  const kind = dir ? null : previewKind(path);
   const downloading = !dir && isDownloading(findTorrentFile(files, path));
-  const href = downloadHref(path);
-  const canCopy = hasFinishedFile(node, path, files);
+  const linkPath = downloading ? finalPath(path) : path;
+  const kind = dir ? null : previewKind(linkPath);
+  const href = downloadHref(linkPath);
+  const canCopy = downloading || hasFinishedFile(node, path, files);
   const linksOf = (paths) => paths.map((p) => absoluteHref(p, window.location.href)).join("\n");
 
   useEffect(() => {
@@ -68,30 +69,30 @@ function TreeNode({ node, path, files, api, onError }) {
             <${Icon} name=${open ? "folderOpen" : "folder"} />
           </button>`
         : html`<${Icon} name=${downloading ? "loader" : fileIcon(path)} class=${downloading ? "spin" : ""} />`}
-      ${downloading ? html`<span class="label">${node.Name}</span>` : html`<a class="label" href=${href}>${node.Name}</a>`}
-      ${!downloading && html`<span class="controls">
+      <a class="label" href=${href}>${node.Name}</a>
+      <span class="controls">
         ${dir
           ? canCopy && html`<${CopyButton} title="Copy links"
               getText=${() => linksOf(finishedFiles(node, path, files))}
               label=${"Copy all links in " + node.Name}
               done=${(text) => "Copied " + text.split("\n").length} />`
-          : canCopy && html`<${CopyButton} title="Copy link" getText=${() => linksOf([path])}
+          : canCopy && html`<${CopyButton} title="Copy link" getText=${() => linksOf([linkPath])}
               label=${"Copy link to " + node.Name} done="Copied" />`}
         ${kind && html`<button type="button" class=${"icon-btn" + (preview ? " on" : "")} aria-pressed=${preview}
           aria-label=${(preview ? "Hide preview of " : "Preview ") + node.Name} onClick=${() => setPreview(!preview)}>
           <${Icon} name=${preview ? "x" : "play"} />
         </button>`}
-        ${deleting
+        ${downloading ? null : deleting
           ? html`<${Icon} name="loader" class="spin" label="Deleting" />`
           : confirm
             ? html`<button type="button" class="icon-btn danger" aria-label=${"Confirm delete " + node.Name} onClick=${remove}><${Icon} name="check" /></button>`
             : html`<button type="button" class="icon-btn danger" aria-label=${"Delete " + node.Name} onClick=${arm}><${Icon} name="trash" /></button>`}
-      </span>`}
+      </span>
     </div>
     <div class="meta">${bytes(node.Size)} · updated ${ago(node.Modified)}</div>
     ${preview && kind && html`<${Preview} kind=${kind} src=${href} />`}
     ${dir && open && node.Children.length > 0 && html`<ul class="tree">
-      ${node.Children.map((c) => html`<${TreeNode} key=${c.Name} node=${c} path=${childPath(path, c.Name)}
+      ${node.Children.map((c) => html`<${TreeNode} key=${finalPath(c.Name)} node=${c} path=${childPath(path, c.Name)}
         files=${files} api=${api} onError=${onError} />`)}
     </ul>`}
   </li>`;
@@ -106,7 +107,7 @@ export function DownloadTree({ root, torrents, system, api, onError }) {
     ${children.length === 0
       ? html`<p class="empty">Download files above</p>`
       : html`<ul class="tree">
-          ${children.map((n) => html`<${TreeNode} key=${n.Name} node=${n} path=${n.Name} files=${files} api=${api} onError=${onError} />`)}
+          ${children.map((n) => html`<${TreeNode} key=${finalPath(n.Name)} node=${n} path=${n.Name} files=${files} api=${api} onError=${onError} />`)}
         </ul>`}
   </section>`;
 }

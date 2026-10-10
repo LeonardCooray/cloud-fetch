@@ -44,8 +44,16 @@ export function indexTorrentFiles(torrents) {
 // The engine keeps an unfinished file on disk as "<name>.part" and renames
 // it when it completes, so a .part path matches the torrent file it becomes.
 export function findTorrentFile(files, path) {
-  const target = path.endsWith(".part") ? path.slice(0, -".part".length) : path;
+  const target = finalPath(path);
   return files.get(path) || (target !== path && files.get(target)) || null;
+}
+
+// finalPath is the name a .part file gets when it completes. A downloading
+// file links there: the server streams it until then, and a player holding
+// the link keeps working across the rename. Download rows are keyed by it
+// too, so an open preview isn't remounted when the .part row is replaced.
+export function finalPath(path) {
+  return path.endsWith(".part") ? path.slice(0, -".part".length) : path;
 }
 
 export function isDownloading(match) {
