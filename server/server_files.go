@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -103,8 +104,16 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, dldir, file
 		return false
 	}
 	defer st.Close()
+	name := strings.TrimSuffix(filepath.Base(file), ".part")
+	// set up front: ServeContent would otherwise sniff the first 512 bytes,
+	// making even a mid-file Range request wait for the first piece
+	ctype := mime.TypeByExtension(filepath.Ext(name))
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ctype)
 	// zero modtime: there's no finished file to date yet, so no Last-Modified
-	http.ServeContent(w, r, strings.TrimSuffix(filepath.Base(file), ".part"), time.Time{}, st)
+	http.ServeContent(w, r, name, time.Time{}, st)
 	return true
 }
 

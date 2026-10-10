@@ -115,3 +115,50 @@ func TestStreamReadEndsWithItsContext(t *testing.T) {
 		t.Fatal("read with no peers returned data")
 	}
 }
+
+// A read blocked on a missing piece must end when the torrent is deleted or
+// paused under it, and leave the client answering (anacrolix #1119 was a
+// lock leaked on exactly this kind of close).
+func TestStreamReadEndsWhenTheTorrentGoesAway(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		act  func(e *Engine, ih string) error
+	}{
+		{"delete", (*Engine).DeleteTorrent},
+		{"pause", (*Engine).StopTorrent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			leech := startEngineWith(t, Config{DownloadDirectory: t.TempDir(), AutoStart: true})
+			mi := multiFileTorrent(t, t.TempDir())
+			ih := mi.HashInfoBytes().HexString()
+			if err := leech.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+				t.Fatal(err)
+			}
+			r, ok, err := leech.StreamFile(context.Background(), "pack/a.bin")
+			if err != nil || !ok {
+				t.Fatalf("StreamFile = %v, %v; want a stream", ok, err)
+			}
+			defer r.Close()
+			readErr := make(chan error, 1)
+			go func() {
+				_, err := r.Read(make([]byte, 10))
+				readErr <- err
+			}()
+			time.Sleep(200 * time.Millisecond)
+			within(t, 10*time.Second, tc.name, func() {
+				if err := tc.act(leech, ih); err != nil {
+					t.Error(err)
+				}
+			})
+			select {
+			case err := <-readErr:
+				if err == nil {
+					t.Fatal("read with no peers returned data")
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("read still blocked 10s after %s", tc.name)
+			}
+			within(t, 10*time.Second, "GetTorrents", func() { leech.GetTorrents() })
+		})
+	}
+}

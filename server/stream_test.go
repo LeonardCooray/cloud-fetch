@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -106,8 +107,14 @@ func TestDownloadStreamsAnUnfinishedFileWithRanges(t *testing.T) {
 	if got := w.Header().Get("Content-Range"); got != "bytes 40000-40099/65536" {
 		t.Fatalf("Content-Range %q", got)
 	}
-	if got := w.Header().Get("Content-Type"); got != "video/mp4" {
-		t.Fatalf("Content-Type %q, want video/mp4", got)
+	// set from the name rather than sniffed (the host's MIME table decides
+	// which); Go's own table has no .mp4
+	want := mime.TypeByExtension(".mp4")
+	if want == "" {
+		want = "application/octet-stream"
+	}
+	if got := w.Header().Get("Content-Type"); got != want {
+		t.Fatalf("Content-Type %q, want %q", got, want)
 	}
 	if !bytes.Equal(w.Body.Bytes(), data[40000:40100]) {
 		t.Fatal("streamed bytes differ from the file's")
