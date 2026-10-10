@@ -7,6 +7,7 @@ import {
   indexTorrentFiles, isDir, isDownloading, previewKind, startsClosed,
 } from "../lib/tree.js";
 import { CopyButton } from "./CopyButton.js";
+import { ShareButton } from "./ShareButton.js";
 
 // Players take focus when they open, so Space controls them rather than
 // pressing the preview toggle that was just clicked.
@@ -78,6 +79,8 @@ function TreeNode({ node, path, files, api, onError }) {
               done=${(text) => "Copied " + text.split("\n").length} />`
           : canCopy && html`<${CopyButton} title="Copy link" getText=${() => linksOf([linkPath])}
               label=${"Copy link to " + node.Name} done="Copied" />`}
+        ${canCopy && html`<${ShareButton} name=${node.Name} api=${api} onError=${onError}
+          getPaths=${() => (dir ? finishedFiles(node, path, files) : [linkPath])} />`}
         ${kind && html`<button type="button" class=${"icon-btn" + (preview ? " on" : "")} aria-pressed=${preview}
           aria-label=${(preview ? "Hide preview of " : "Preview ") + node.Name} onClick=${() => setPreview(!preview)}>
           <${Icon} name=${preview ? "x" : "play"} />

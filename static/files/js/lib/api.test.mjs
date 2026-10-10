@@ -94,3 +94,15 @@ test("file selection posts action, infohash and a path that may contain colons",
     { url: "api/file", method: "POST", body: "start:abc:pack/c.bin" },
   ]);
 });
+
+test("share posts paths and TTLs as JSON and parses the links", async () => {
+  const f = stubFetch(ok(JSON.stringify({ Links: [["share/1/a/x.mkv"]], Expires: [1] })), ok());
+  const api = createApi(f);
+  const res = await api.share(["x.mkv"], [3600]);
+  assert.deepEqual(res, { Links: [["share/1/a/x.mkv"]], Expires: [1] });
+  await api.revokeShares();
+  assert.deepEqual(f.calls, [
+    { url: "api/share", method: "POST", body: JSON.stringify({ Paths: ["x.mkv"], TTLs: [3600] }) },
+    { url: "api/share-revoke", method: "POST", body: "" },
+  ]);
+});

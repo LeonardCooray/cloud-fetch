@@ -53,6 +53,9 @@ type Server struct {
 	//set by Run so closeListener can stop it
 	runMut     sync.Mutex
 	httpServer *http.Server
+	//share links; the key is loaded on first use
+	shareMu     sync.Mutex
+	shareSecret []byte
 	//torrent engine
 	engine *engine.Engine
 	state  struct {
@@ -281,6 +284,16 @@ func (s *Server) handler() http.Handler {
 		h = cookieauth.New().SetUserPass(user, pass).Wrap(h)
 		log.Printf("Enabled HTTP authentication")
 	}
+	// share links carry their own signature, so they skip the login, and
+	// gzip for the same reason /download/ does
+	authed := h
+	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/share/") {
+			s.serveShare(w, r)
+			return
+		}
+		authed.ServeHTTP(w, r)
+	})
 	if s.Log {
 		h = requestlog.Wrap(h)
 	}
@@ -334,6 +347,11 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	//search
 	if strings.HasPrefix(r.URL.Path, "/search") {
 		s.scraperh.ServeHTTP(w, r)
+		return
+	}
+	//share links, the API calls that answer with a body
+	if r.URL.Path == "/api/share" || r.URL.Path == "/api/share-revoke" {
+		s.handleShareAPI(w, r)
 		return
 	}
 	//api call

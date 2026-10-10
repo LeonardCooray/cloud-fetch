@@ -19,14 +19,14 @@ export function freePort() {
   });
 }
 
-async function waitForHttp(url, proc, logs, timeoutMs = 20_000) {
+async function waitForHttp(url, proc, logs, headers, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (proc.exitCode !== null || proc.signalCode !== null) {
       throw new Error(`cloud-fetch exited early:\n${logs.join("")}`);
     }
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers });
       if (res.ok) return;
     } catch {
       // not listening yet
@@ -57,13 +57,14 @@ async function startServer({ dir, downloads, configPath, search, serverOptions }
     }));
     const args = ["--port", String(port), "--config-path", configPath, "--search-config-url", search.configUrl];
     if (serverOptions.title) args.push("--title", serverOptions.title);
+    if (serverOptions.auth) args.push("--auth", serverOptions.auth);
     const logs = [];
     const proc = spawn(BINARY, args, { cwd: dir });
     proc.stdout.on("data", (d) => logs.push(String(d)));
     proc.stderr.on("data", (d) => logs.push(String(d)));
     const url = `http://127.0.0.1:${port}/`;
     try {
-      await waitForHttp(url, proc, logs);
+      await waitForHttp(url, proc, logs, authHeaders(serverOptions));
       return { proc, url, logs };
     } catch (e) {
       proc.kill("SIGTERM");
@@ -73,9 +74,17 @@ async function startServer({ dir, downloads, configPath, search, serverOptions }
   }
 }
 
+// authHeaders logs Node's own requests in when the server has --auth; the
+// page logs in through Playwright's httpCredentials instead.
+function authHeaders(serverOptions) {
+  if (!serverOptions.auth) return {};
+  return { Authorization: "Basic " + Buffer.from(serverOptions.auth).toString("base64") };
+}
+
 export const test = base.extend({
-  // { title?: string, seeding?: boolean } — seeding turns on EnableUpload
-  // and EnableSeeding, so complete torrents read "Seeding" instead of "Done"
+  // { title?: string, seeding?: boolean, auth?: "user:password" } — seeding
+  // turns on EnableUpload and EnableSeeding, so complete torrents read
+  // "Seeding" instead of "Done"
   serverOptions: [{}, { option: true }],
 
   app: async ({ serverOptions }, use) => {
@@ -89,7 +98,7 @@ export const test = base.extend({
       let url, logs;
       ({ proc, url, logs } = await startServer({ dir, downloads, configPath, search, serverOptions }));
       const addTorrent = async (buf) => {
-        const res = await fetch(url + "api/torrentfile", { method: "POST", body: buf });
+        const res = await fetch(url + "api/torrentfile", { method: "POST", body: buf, headers: authHeaders(serverOptions) });
         if (!res.ok) throw new Error(`add torrent: ${res.status} ${await res.text()}`);
       };
       await use({ url, downloads, addTorrent, logs });

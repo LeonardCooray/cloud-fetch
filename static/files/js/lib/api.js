@@ -54,5 +54,8 @@ export function createApi(fetchImpl) {
       getJSON(`search/${enc(provider)}?${new URLSearchParams({ query, page: String(page) })}`),
     searchItem: (provider, path) => getJSON(`search/${enc(provider)}/item?${new URLSearchParams({ item: path })}`),
     deleteDownload: (path) => request(downloadHref(path), { method: "DELETE" }),
+    // resolves { Links, Expires }: Links[i] holds paths' links lasting ttls[i] seconds
+    share: async (paths, ttls) => JSON.parse(await post("share", JSON.stringify({ Paths: paths, TTLs: ttls }))),
+    revokeShares: () => post("share-revoke", ""),
   };
 }

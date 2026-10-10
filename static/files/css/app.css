@@ -310,6 +310,16 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
   width: 100%; padding: 6px; resize: none; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text); font: 12px/1.4 var(--mono);
 }
+.share-menu {
+  position: absolute; top: 100%; right: 0; z-index: 3; width: min(320px, 100%); padding: 10px;
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm); background: var(--surface);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.35); font-size: 12px;
+}
+.share-ttls { display: flex; gap: 6px; margin-top: 8px; }
+.share-ttls button { flex: 1; }
+.share-revoke { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.share-revoke h4 { margin-bottom: 0; }
+.share-revoke p { margin: 4px 0 8px; font-size: 13px; }
 .copy-fallback-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; font-size: 12px; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; overflow: hidden;

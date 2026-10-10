@@ -199,6 +199,12 @@ Binding ports 80 and 443 needs root or the `CAP_NET_BIND_SERVICE` capability, fo
 
 Run once with `--acme-staging` first. Staging certificates aren't trusted by browsers, but a mistake there doesn't count against Let's Encrypt's rate limits. Delete `certs/` before switching to the real server.
 
+### Share links
+
+To give someone a file without giving them the password, use the link button on its row in Downloads and pick how long the link lasts: 1 hour, 24 hours or 7 days. The link is copied to the clipboard and downloads without a login until it expires. Range requests work, so VLC can seek and IDM can resume. On a folder, you get one link per finished file. Links only download; they can't delete or list anything.
+
+Links are signed with a random key kept in `share.key` next to the config file, so they survive restarts. **Revoke all share links** in Settings replaces that key, which stops every link shared so far. There's no way to revoke a single link.
+
 ### Search providers
 
 The built-in provider list is [`server/search-config.json`](server/search-config.json). Running instances re-read it from this repo's `master` branch every 30 minutes, so a pushed edit reaches them without a new release. Set `--search-config-url ""` to use only the list compiled into the binary.
