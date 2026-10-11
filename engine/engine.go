@@ -54,9 +54,12 @@ func (e *Engine) Configure(c Config) error {
 	if c.MinimumFreeSpaceGB < 0 || c.MinimumFreeSpaceGB > 1000000 {
 		return fmt.Errorf("Minimum free space must be between 0 and 1000000 GB")
 	}
+	if c.DeleteDownloadsAfterDays < 0 || c.DeleteDownloadsAfterDays > 3650 {
+		return fmt.Errorf("Delete downloads after days must be between 0 and 3650")
+	}
 	e.mut.Lock()
 	if e.client != nil && sameClient(e.config, c) {
-		// the next FreeSpace call applies a new threshold
+		// the next FreeSpace and CleanupDownloads calls apply the new values
 		e.config = c
 		e.mut.Unlock()
 		return nil
