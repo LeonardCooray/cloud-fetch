@@ -172,6 +172,10 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
   background: var(--danger-bg); color: var(--danger); overflow-wrap: anywhere;
 }
 .banner .icon-btn { color: var(--danger); }
+.low-disk {
+  margin: 12px 0; padding: 10px 14px; border: 1px solid var(--warn); border-radius: var(--radius-sm);
+  background: var(--warn-bg); color: var(--warn); font-size: 14px;
+}
 .field-error { margin: 8px 0; color: var(--danger); font-size: 13px; }
 
 .card { position: relative; margin-bottom: 10px; padding: 14px 16px; border-radius: var(--radius); }
@@ -271,7 +275,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .badge-downloading { background: var(--accent-bg); color: var(--accent); }
 .badge-downloading::before { animation: pulse 1.6s ease-in-out infinite; }
 .badge-seeding, .badge-done { background: var(--ok-bg); color: var(--ok); }
-.badge-paused { background: var(--warn-bg); color: var(--warn); }
+.badge-paused, .badge-held { background: var(--warn-bg); color: var(--warn); }
 @keyframes pulse { 50% { opacity: 0.3; } }
 .torrent.is-seeding .progress .bar, .torrent.is-done .progress .bar { background: var(--ok); }
 .torrent.is-paused .progress .bar { background: var(--faint); }

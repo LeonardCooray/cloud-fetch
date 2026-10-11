@@ -23,7 +23,7 @@ test("torrentStatus tolerates missing fields", () => {
 
 test("every status has a sentence-case label", () => {
   assert.deepEqual(STATUS_LABELS, {
-    loading: "Loading", downloading: "Downloading", seeding: "Seeding", done: "Done", paused: "Paused",
+    loading: "Loading", downloading: "Downloading", seeding: "Seeding", done: "Done", paused: "Paused", held: "On hold",
   });
 });
 
@@ -131,4 +131,14 @@ test("isFinished counts done and seeding torrents, nothing else", () => {
   assert.equal(isFinished({ Loaded: true, Started: true, Files: [picked(50)] }), false);
   assert.equal(isFinished({ Loaded: true, Started: false, Files: [picked(50)] }), false);
   assert.equal(isFinished({ Loaded: false, Percent: 100 }), false);
+});
+
+test("a torrent the low-disk guard holds reads On hold until it's complete", () => {
+  const held = { Loaded: true, Started: true, SpacePaused: true, Percent: 40, Downloaded: 40, Size: 100, DownloadRate: 0 };
+  assert.equal(torrentStatus(held), "held");
+  assert.equal(STATUS_LABELS.held, "On hold");
+  assert.deepEqual(statusLine(held), { main: "40 B of 100 B · 40%", rate: null, note: "waiting for disk space" });
+  assert.equal(eta(held), null);
+  assert.equal(torrentStatus({ ...held, Percent: 100 }, { seeding: false }), "done");
+  assert.equal(torrentStatus({ ...held, Started: false, SpacePaused: false }), "paused");
 });

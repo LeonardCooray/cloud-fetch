@@ -6,11 +6,13 @@ export const STATUS_LABELS = {
   seeding: "Seeding",
   done: "Done",
   paused: "Paused",
+  held: "On hold",
 };
 
 // torrentStatus derives a torrent's state from the fields the server already
 // sends. A complete torrent that is still started is seeding only when the
-// engine uploads (EnableUpload and EnableSeeding); otherwise it's done.
+// engine uploads (EnableUpload and EnableSeeding); otherwise it's done. A
+// started one the low-disk guard holds (SpacePaused) is on hold.
 // selection sums the files ticked for download. Percent counts unticked
 // files too, so a torrent whose selected files are all complete is finished
 // even though Percent never reaches 100. Null when nothing is selected.
@@ -30,7 +32,7 @@ export function torrentStatus(t, { seeding = true } = {}) {
   if (!t || !t.Loaded) return "loading";
   const picked = selection(t);
   const complete = picked ? picked.complete : (t.Percent || 0) >= 100;
-  if (t.Started) return complete ? (seeding ? "seeding" : "done") : "downloading";
+  if (t.Started) return complete ? (seeding ? "seeding" : "done") : t.SpacePaused ? "held" : "downloading";
   return complete ? "done" : "paused";
 }
 
@@ -68,6 +70,7 @@ export function statusLine(t, options) {
   }
   const main = `${bytes(t.Downloaded)} of ${bytes(t.Size)} · ${Math.floor(t.Percent || 0)}%`;
   if (status === "paused") return { main, rate: null, note: null };
+  if (status === "held") return { main, rate: null, note: "waiting for disk space" };
   const rate = t.DownloadRate || 0;
   return { main, rate: `${bytes(rate)}/s`, note: rate > 0 ? eta(t) : "waiting for peers" };
 }

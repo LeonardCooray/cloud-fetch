@@ -26,14 +26,17 @@ type stats struct {
 
 // loadStats gathers fresh numbers, then swaps them in under l (the state
 // lock velox marshals under), so a push never reads a half-written struct.
-func (s *stats) loadStats(diskDir string, l sync.Locker) {
+// It returns diskDir's free bytes, and false if they couldn't be read.
+func (s *stats) loadStats(diskDir string, l sync.Locker) (int64, bool) {
 	next := stats{Set: true, pusher: s.pusher}
 	//count cpu cycles between last count
 	if percents, err := cpu.Percent(0, false); err == nil && len(percents) == 1 {
 		next.CPU = percents[0]
 	}
 	//count disk usage
+	diskOK := false
 	if stat, err := disk.Usage(diskDir); err == nil {
+		diskOK = true
 		next.DiskUsed = int64(stat.Used)
 		next.DiskTotal = int64(stat.Total)
 		// Total-Used would count blocks reserved for root (5% on ext4 by
@@ -55,4 +58,5 @@ func (s *stats) loadStats(diskDir string, l sync.Locker) {
 	*s = next
 	l.Unlock()
 	s.pusher.Push()
+	return next.DiskFree, diskOK
 }
