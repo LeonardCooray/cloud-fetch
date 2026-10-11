@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { sortTorrents } from "../lib/tree.js";
-import { STATUS_LABELS, statusLine, torrentStatus } from "../lib/status.js";
+import { STATUS_LABELS, isFinished, statusLine, torrentStatus } from "../lib/status.js";
 import { FileTable } from "./FileTable.js";
 
 function TorrentCard({ t, seeding, api, onError }) {
@@ -39,12 +39,17 @@ function TorrentCard({ t, seeding, api, onError }) {
   </article>`;
 }
 
+// Clear finished only takes torrents off the list, like Remove; the files
+// stay in Downloads, so it doesn't ask first.
 export function TorrentList({ torrents, seeding, api, onError }) {
   const list = sortTorrents(torrents);
+  const finished = list.filter(isFinished).length;
   return html`<section class="torrents">
     <div class="section-header">
       <h3>Torrents</h3>
       <span class="count">${list.length || ""}</span>
+      ${finished > 0 && html`<button type="button" class="clear-finished" onClick=${() => api.clearFinished().catch(onError)}
+        title="Remove finished torrents from the list; their files stay in Downloads">Clear finished</button>`}
     </div>
     ${list.length === 0
       ? html`<p class="empty">Add torrents above</p>`

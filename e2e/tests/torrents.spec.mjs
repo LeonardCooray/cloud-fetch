@@ -69,3 +69,26 @@ test("card buttons get their own full-width row on a phone", async ({ page, app 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("Clear finished takes finished torrents off the list and keeps their files", async ({ page, app }) => {
+  const done = makeTorrent("Done Show", [{ path: "E01.mkv", size: 16384 }]);
+  await writeData(app.downloads, done);
+  await app.addTorrent(done.torrent);
+  const busy = makeTorrent("busy.bin", [{ path: "busy.bin", size: 65536 }]);
+  await app.addTorrent(busy.torrent);
+  const clear = page.getByRole("button", { name: "Clear finished" });
+  await expect(page.getByRole("article", { name: "busy.bin" }).locator(".badge")).toHaveText("Downloading");
+  await expect(page.getByRole("article", { name: "Done Show" }).locator(".badge")).toHaveText("Done", { timeout: 30_000 });
+  await clear.click();
+  await expect(page.getByRole("article", { name: "Done Show" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "busy.bin" })).toBeVisible();
+  await expect(clear).toHaveCount(0);
+  await expect(page.locator(".downloads .node > .row", { hasText: "Done Show" })).toBeVisible();
+});
+
+test("Clear finished only shows once something has finished", async ({ page, app }) => {
+  const busy = makeTorrent("busy.bin", [{ path: "busy.bin", size: 65536 }]);
+  await app.addTorrent(busy.torrent);
+  await expect(page.getByRole("article", { name: "busy.bin" }).locator(".badge")).toHaveText("Downloading");
+  await expect(page.getByRole("button", { name: "Clear finished" })).toHaveCount(0);
+});

@@ -34,6 +34,12 @@ export function torrentStatus(t, { seeding = true } = {}) {
   return complete ? "done" : "paused";
 }
 
+// isFinished matches the server's Engine.ClearFinished: done or seeding.
+export function isFinished(t) {
+  const status = torrentStatus(t);
+  return status === "done" || status === "seeding";
+}
+
 export function eta(t) {
   if (torrentStatus(t) !== "downloading") return null;
   const rate = t.DownloadRate || 0;

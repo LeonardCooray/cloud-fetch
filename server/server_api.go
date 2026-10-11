@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -90,6 +91,10 @@ func (s *Server) api(r *http.Request) error {
 		uri := string(data)
 		if err := s.engine.NewMagnet(uri); err != nil {
 			return fmt.Errorf("Magnet error: %s", err)
+		}
+	case "clearfinished":
+		if n := s.engine.ClearFinished(); n > 0 {
+			log.Printf("Cleared %d finished torrents", n)
 		}
 	case "torrent":
 		cmd := strings.SplitN(string(data), ":", 2)

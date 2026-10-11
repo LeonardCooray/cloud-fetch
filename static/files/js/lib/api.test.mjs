@@ -106,3 +106,9 @@ test("share posts paths and TTLs as JSON and parses the links", async () => {
     { url: "api/share-revoke", method: "POST", body: "" },
   ]);
 });
+
+test("clearFinished posts the clearfinished action", async () => {
+  const f = stubFetch(ok());
+  await createApi(f).clearFinished();
+  assert.deepEqual(f.calls, [{ url: "api/clearfinished", method: "POST", body: "" }]);
+});

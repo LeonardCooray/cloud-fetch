@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STATUS_LABELS, torrentStatus, eta, statusLine, totalRate } from "./status.js";
+import { STATUS_LABELS, torrentStatus, eta, statusLine, totalRate, isFinished } from "./status.js";
 
 const GB = 1e9;
 const MB = 1e6;
@@ -122,4 +122,13 @@ test("totalRate sums the download rate of running torrents only", () => {
     loading: t({ Loaded: false, DownloadRate: 9 * MB }),
     junk: t({ DownloadRate: NaN }),
   }), 2.5 * MB);
+});
+
+test("isFinished counts done and seeding torrents, nothing else", () => {
+  const picked = (pct) => ({ Started: true, Percent: pct, Size: 1 });
+  assert.equal(isFinished({ Loaded: true, Started: true, Files: [picked(100)] }), true);
+  assert.equal(isFinished({ Loaded: true, Started: false, Files: [picked(100)] }), true);
+  assert.equal(isFinished({ Loaded: true, Started: true, Files: [picked(50)] }), false);
+  assert.equal(isFinished({ Loaded: true, Started: false, Files: [picked(50)] }), false);
+  assert.equal(isFinished({ Loaded: false, Percent: 100 }), false);
 });
