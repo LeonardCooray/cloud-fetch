@@ -221,6 +221,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
   color: var(--muted); font-size: 12px; font-weight: 500; text-align: center; font-variant-numeric: tabular-nums;
 }
 .count:empty { display: none; }
+.section-header .clear-finished { margin-left: auto; padding: 4px 10px; font-size: 12px; }
 /* phones hide the pill's free space, so it shows here instead */
 .section-header .free { display: none; margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }

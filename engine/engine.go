@@ -434,6 +434,7 @@ func (e *Engine) StopTorrent(infohash string) error {
 	return nil
 }
 
+// DeleteTorrent drops the torrent and keeps its files.
 func (e *Engine) DeleteTorrent(infohash string) error {
 	e.mut.Lock()
 	defer e.mut.Unlock()
@@ -441,6 +442,32 @@ func (e *Engine) DeleteTorrent(infohash string) error {
 	if err != nil {
 		return err
 	}
+	e.dropLocked(t)
+	return nil
+}
+
+// ClearFinished drops every complete torrent, keeping the files, and returns
+// how many it dropped.
+func (e *Engine) ClearFinished() int {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	if e.client == nil {
+		return 0
+	}
+	for _, tt := range e.client.Torrents() {
+		e.upsertTorrent(tt)
+	}
+	n := 0
+	for _, t := range e.ts {
+		if t.Complete() {
+			e.dropLocked(t)
+			n++
+		}
+	}
+	return n
+}
+
+func (e *Engine) dropLocked(t *Torrent) {
 	if err := e.store.remove(t.InfoHash); err != nil {
 		log.Printf("delete %s: %s", t.InfoHash, err)
 	}
@@ -448,7 +475,6 @@ func (e *Engine) DeleteTorrent(infohash string) error {
 	delete(e.ts, t.InfoHash)
 	t.stopVerify()
 	t.t.Drop()
-	return nil
 }
 
 // StartFile and StopFile select which files of a torrent get downloaded.

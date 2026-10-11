@@ -100,6 +100,43 @@ func (torrent *Torrent) updateLoaded(t *torrent.Torrent) {
 	torrent.updatedAt = now
 }
 
+// Complete reports whether the files picked for download are all there; with
+// none picked it goes by the whole torrent. The web UI's torrentStatus
+// (static/files/js/lib/status.js) uses the same rule for its Done badge.
+// Until verification of data found on disk ends, a same-size file counts
+// as complete whatever it holds, so nothing is complete before then.
+func (torrent *Torrent) Complete() bool {
+	if !torrent.Loaded || torrent.verifying() {
+		return false
+	}
+	picked := 0
+	for _, f := range torrent.Files {
+		if f == nil || !f.Started {
+			continue
+		}
+		picked++
+		if f.Percent < 100 {
+			return false
+		}
+	}
+	if picked == 0 {
+		return torrent.Percent >= 100
+	}
+	return true
+}
+
+func (torrent *Torrent) verifying() bool {
+	if torrent.verify == nil {
+		return false
+	}
+	select {
+	case <-torrent.verify.done:
+		return false
+	default:
+		return true
+	}
+}
+
 func percent(n, total int64) float32 {
 	if total == 0 {
 		return float32(0)
