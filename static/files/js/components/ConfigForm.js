@@ -24,6 +24,9 @@ export function ConfigForm({ config, api, onError, onClose }) {
       const whole = text !== "" && Number.isInteger(n);
       if (k === "IncomingPort" && (!whole || n < 1 || n > 65535)) return { error: "Enter a port between 1 and 65535" };
       if (k === "MinimumFreeSpaceGB" && (!whole || n < 0)) return { error: "Enter 0 or more GB for Minimum Free Space (0 turns the guard off)" };
+      if (k === "DeleteDownloadsAfterDays" && (!whole || n < 0 || n > 3650)) {
+        return { error: "Enter 0 to 3650 days for Delete Downloads After (0 keeps downloads forever)" };
+      }
       if (!whole) return { error: `Enter a whole number for ${addSpaces(k)}` };
       out[k] = n;
     }

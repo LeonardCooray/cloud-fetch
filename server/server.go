@@ -53,6 +53,8 @@ type Server struct {
 	//set by Run so closeListener can stop it
 	runMut     sync.Mutex
 	httpServer *http.Server
+	//serializes CleanupDownloads runs
+	cleanupMu sync.Mutex
 	//share links; the key is loaded on first use
 	shareMu     sync.Mutex
 	shareSecret []byte
@@ -162,6 +164,13 @@ func (s *Server) Run(version string) error {
 			s.state.Unlock()
 			s.state.Push()
 			time.Sleep(1 * time.Second)
+		}
+	}()
+	// reconfigure above already ran the first cleanup
+	go func() {
+		for {
+			time.Sleep(time.Hour)
+			s.cleanup()
 		}
 	}()
 	//start collecting stats
@@ -331,7 +340,23 @@ func (s *Server) reconfigure(c engine.Config) error {
 	s.state.Config = c
 	s.state.Unlock()
 	s.state.Push()
+	// so switching cleanup on, or shortening it, takes effect straight away
+	go s.cleanup()
 	return nil
+}
+
+// cleanup runs the engine's download cleanup and refreshes the listing if
+// it deleted anything.
+func (s *Server) cleanup() {
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	if len(s.engine.CleanupDownloads(time.Now())) == 0 {
+		return
+	}
+	s.state.Lock()
+	s.state.Downloads = s.listFiles()
+	s.state.Unlock()
+	s.state.Push()
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {

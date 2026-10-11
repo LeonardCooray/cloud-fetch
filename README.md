@@ -11,6 +11,7 @@
 * Resumable, seekable downloads (HTTP Range) for download managers and media players
 * Watch a file while it downloads: its link streams it, fetching the pieces just ahead of wherever the player is
 * Embedded torrent search, with the provider list kept in this repo
+* Optional cleanup: **Delete Downloads After Days** in Settings (0, the default, keeps everything) deletes downloads nothing has changed in for that long, hourly and whenever settings are saved. Anything an unfinished or paused torrent still needs is kept
 * Low-disk guard: below **Minimum Free Space GB** in Settings (5 GB by default, 0 turns it off) downloads go on hold, and they resume on their own once 1 GB more than that is free
 * Real-time updates in a mobile-friendly UI
 
