@@ -10,6 +10,15 @@ import { DownloadTree } from "./DownloadTree.js";
 import { ConfigForm } from "./ConfigForm.js";
 import { totalRate } from "../lib/status.js";
 
+// The server holds downloads below the minimum and resumes them 1 GB above
+// it (engine.lowDiskMargin).
+function LowDiskNotice({ min }) {
+  return html`<div class="low-disk" role="status">
+    <strong>Downloads are on hold:</strong> less than ${min} GB is free. They resume on their own once ${min + 1} GB is free.
+    Delete something in Downloads, or lower Minimum Free Space GB in Settings.
+  </div>`;
+}
+
 export function App({ api }) {
   const { state, connected, everConnected } = useSync();
   const [error, setError] = useState(null);
@@ -44,6 +53,7 @@ export function App({ api }) {
     ${configOpen && state.Config && html`<${ConfigForm} config=${state.Config} api=${api} onError=${report} onClose=${() => setConfigOpen(false)} />`}
     <${OmniBar} api=${api} providers=${state.SearchProviders} editorOpen=${editorOpen} setEditorOpen=${setEditorOpen} onError=${report} />
     ${error && html`<${ErrorBanner} message=${error} onDismiss=${() => setError(null)} />`}
+    ${state.LowDisk && state.Config && html`<${LowDiskNotice} min=${state.Config.MinimumFreeSpaceGB} />`}
     <${TorrentList} torrents=${state.Torrents} seeding=${seeding} api=${api} onError=${report} />
     <${DownloadTree} root=${state.Downloads} torrents=${state.Torrents} system=${stats.System} api=${api} onError=${report} />
     <${Footer} stats=${stats} users=${state.Users} />

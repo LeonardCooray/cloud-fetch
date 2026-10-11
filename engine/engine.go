@@ -22,6 +22,8 @@ type Engine struct {
 	config Config
 	store  *store
 	ts     map[string]*Torrent
+	// downloads are held for low disk space; see FreeSpace
+	lowDisk bool
 }
 
 func New() *Engine {
@@ -48,7 +50,17 @@ func (e *Engine) Configure(c Config) error {
 	if c.IncomingPort <= 0 || c.IncomingPort > 65535 {
 		return fmt.Errorf("Invalid incoming port (%d)", c.IncomingPort)
 	}
+	// the cap keeps the byte count well inside an int64
+	if c.MinimumFreeSpaceGB < 0 || c.MinimumFreeSpaceGB > 1000000 {
+		return fmt.Errorf("Minimum free space must be between 0 and 1000000 GB")
+	}
 	e.mut.Lock()
+	if e.client != nil && sameClient(e.config, c) {
+		// the next FreeSpace call applies a new threshold
+		e.config = c
+		e.mut.Unlock()
+		return nil
+	}
 	hadClient, prev := e.client != nil, e.config
 	e.closeClientLocked()
 	e.mut.Unlock()
@@ -211,9 +223,13 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify
 		t.magnet = magnet
 	}
 	t.Started = started
+	t.SpacePaused = false
 	if started {
 		tt.AllowDataDownload()
 		tt.AllowDataUpload()
+		if e.lowDisk {
+			t.holdForSpace()
+		}
 	} else {
 		tt.DisallowDataDownload()
 		tt.DisallowDataUpload()
@@ -409,6 +425,9 @@ func (e *Engine) StartTorrent(infohash string) error {
 	if t.Started {
 		return fmt.Errorf("Already started")
 	}
+	if e.lowDisk {
+		return e.lowDiskError()
+	}
 	t.Started = true
 	t.t.AllowDataDownload()
 	t.t.AllowDataUpload()
@@ -430,8 +449,57 @@ func (e *Engine) StopTorrent(infohash string) error {
 	t.t.DisallowDataDownload()
 	t.t.DisallowDataUpload()
 	t.Started = false
+	// paused by hand now, so space coming back doesn't resume it
+	t.SpacePaused = false
 	e.saveLocked(t)
 	return nil
+}
+
+// lowDiskMargin is how far free space must climb above the minimum before
+// held downloads resume, so they don't flap around the threshold.
+const lowDiskMargin = 1 << 30
+
+// FreeSpace takes the download directory's free bytes. Below the
+// MinimumFreeSpaceGB setting it holds every started torrent's downloading
+// (uploads carry on) and any torrent started meanwhile; once free space is
+// back above the minimum plus lowDiskMargin it resumes the ones it held.
+// Torrents paused by hand stay paused. It reports whether downloads are held.
+func (e *Engine) FreeSpace(free int64) bool {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	min := int64(e.config.MinimumFreeSpaceGB) << 30
+	low := e.lowDisk
+	switch {
+	case min <= 0:
+		low = false
+	case free < min:
+		low = true
+	case free >= min+lowDiskMargin:
+		low = false
+	}
+	if low == e.lowDisk {
+		return low
+	}
+	e.lowDisk = low
+	if low {
+		log.Printf("Holding downloads: %.1f GB free, below the %d GB minimum", float64(free)/(1<<30), e.config.MinimumFreeSpaceGB)
+	} else {
+		log.Printf("Resuming held downloads: %.1f GB free", float64(free)/(1<<30))
+	}
+	for _, t := range e.ts {
+		switch {
+		case low && t.Started:
+			t.holdForSpace()
+		case !low && t.SpacePaused:
+			t.SpacePaused = false
+			t.t.AllowDataDownload()
+		}
+	}
+	return low
+}
+
+func (e *Engine) lowDiskError() error {
+	return fmt.Errorf("Less than %d GB free, so downloads are on hold until space frees up", e.config.MinimumFreeSpaceGB)
 }
 
 // DeleteTorrent drops the torrent and keeps its files.

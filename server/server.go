@@ -66,6 +66,7 @@ type Server struct {
 		Downloads       *fsNode
 		Torrents        map[string]*engine.Torrent
 		Users           map[string]string
+		LowDisk         bool // downloads held for low disk space
 		Stats           struct {
 			Title   string
 			Version string
@@ -120,10 +121,13 @@ func (s *Server) Run(version string) error {
 	//torrent engine
 	s.engine = engine.New()
 	//configure engine
+	// defaults; a config file only overrides the fields it has, so these
+	// also fill settings added since it was written
 	c := engine.Config{
-		DownloadDirectory: "./downloads",
-		EnableUpload:      true,
-		AutoStart:         true,
+		DownloadDirectory:  "./downloads",
+		EnableUpload:       true,
+		AutoStart:          true,
+		MinimumFreeSpaceGB: 5,
 	}
 	if moved, err := migrateLegacyConfig(s.ConfigPath); err != nil {
 		return fmt.Errorf("migrating %s: %s", legacyConfigName, err)
@@ -164,7 +168,16 @@ func (s *Server) Run(version string) error {
 	go func() {
 		for {
 			c := s.engine.Config()
-			s.state.Stats.System.loadStats(c.DownloadDirectory, &s.state)
+			if free, ok := s.state.Stats.System.loadStats(c.DownloadDirectory, &s.state); ok {
+				low := s.engine.FreeSpace(free)
+				s.state.Lock()
+				changed := s.state.LowDisk != low
+				s.state.LowDisk = low
+				s.state.Unlock()
+				if changed {
+					s.state.Push()
+				}
+			}
 			time.Sleep(5 * time.Second)
 		}
 	}()

@@ -16,6 +16,7 @@ type Torrent struct {
 	Files      []*File
 	//cloud fetch
 	Started      bool
+	SpacePaused  bool // downloading held for low disk space; still Started
 	Dropped      bool
 	Percent      float32
 	DownloadRate float32
@@ -135,6 +136,11 @@ func (torrent *Torrent) verifying() bool {
 	default:
 		return true
 	}
+}
+
+func (torrent *Torrent) holdForSpace() {
+	torrent.SpacePaused = true
+	torrent.t.DisallowDataDownload()
 }
 
 func percent(n, total int64) float32 {

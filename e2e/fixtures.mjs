@@ -54,6 +54,8 @@ async function startServer({ dir, downloads, configPath, search, serverOptions }
       EnableUpload: Boolean(serverOptions.seeding),
       EnableSeeding: Boolean(serverOptions.seeding),
       IncomingPort: await freePort(),
+      // off unless a test asks, so no test depends on the machine's free space
+      MinimumFreeSpaceGB: serverOptions.minFreeGB ?? 0,
     }));
     const args = ["--port", String(port), "--config-path", configPath, "--search-config-url", search.configUrl];
     if (serverOptions.title) args.push("--title", serverOptions.title);
@@ -82,9 +84,9 @@ function authHeaders(serverOptions) {
 }
 
 export const test = base.extend({
-  // { title?: string, seeding?: boolean, auth?: "user:password" } — seeding
-  // turns on EnableUpload and EnableSeeding, so complete torrents read
-  // "Seeding" instead of "Done"
+  // { title?: string, seeding?: boolean, auth?: "user:password",
+  // minFreeGB?: number } — seeding turns on EnableUpload and EnableSeeding,
+  // so complete torrents read "Seeding" instead of "Done"
   serverOptions: [{}, { option: true }],
 
   app: async ({ serverOptions }, use) => {
