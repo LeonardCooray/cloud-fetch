@@ -2,6 +2,10 @@ name: CI
 on:
   pull_request: {}
   push: {}
+  # a new advisory can land against unchanged code; only govulncheck runs on the schedule
+  # no workflow_dispatch: the release jobs gate on the ref alone, so a manual run on a tag would republish it
+  schedule:
+    - cron: "41 3 * * 1" # Mondays 03:41 UTC
 # least privilege by default; release jobs ask for what they need
 permissions:
   contents: read
@@ -11,6 +15,7 @@ jobs:
   # ================
   test:
     name: Build & Test
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +46,36 @@ jobs:
           node-version: "24"
       - name: UI unit tests
         run: node --test "static/files/js/**/*.test.mjs"
+  # ================
+  # VULNERABILITY CHECK
+  # ================
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false # same key as Build & Test; finishing first, it would save a cache without the -race builds
+      # setup-go sets GOTOOLCHAIN=local, so a pin needing a newer Go than go.mod's fails here until go.mod catches up
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      # fails on vulnerabilities the code can reach; stdlib ones are judged against the Go that builds the release
+      # binaries. Every OS goreleaser ships, built the same way (CGO off), so OS-specific code paths count.
+      - name: govulncheck
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          status=0
+          for os in linux darwin windows; do
+            echo "::group::GOOS=$os"
+            GOOS=$os govulncheck ./... || status=1
+            echo "::endgroup::"
+          done
+          exit $status
   # ================
   # BROWSER TESTS
   # ================
