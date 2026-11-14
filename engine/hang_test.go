@@ -112,17 +112,31 @@ func TestClosingDuringVerificationLeavesTheClientUsable(t *testing.T) {
 	prev := log.Writer()
 	log.SetOutput(logs)
 	t.Cleanup(func() { log.SetOutput(prev) })
-	for i := 0; i < 20; i++ {
+	const n = 20
+	running := 0
+	for i := 0; i < n; i++ {
 		e := startEngine(t, t.TempDir())
 		mi := manyPieces(t)
 		if err := e.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
 			t.Fatal(err)
 		}
+		e.mut.Lock()
+		v := e.ts[mi.HashInfoBytes().HexString()].verify
+		e.mut.Unlock()
 		time.Sleep(time.Duration(i) * 250 * time.Microsecond)
+		select {
+		case <-v.done:
+		default:
+			running++
+		}
 		old := e.client
 		within(t, 5*time.Second, "closing the client", func() { closeEngine(e) })
-		time.Sleep(50 * time.Millisecond) // let a pending piece check reach the closed torrent
+		within(t, 5*time.Second, "the cut-short verification", func() { <-v.done })
 		within(t, 5*time.Second, "the closed client's lock", func() { old.Torrents() })
+	}
+	// a close after the verification finished tests nothing
+	if running < n/2 {
+		t.Fatalf("only %d of %d closes came while a verification was running", running, n)
 	}
 	// the engine's own verify line; anacrolix's slog output lands here too
 	if regexp.MustCompile(`verify [0-9a-f]{40}: piece `).MatchString(logs.String()) {
