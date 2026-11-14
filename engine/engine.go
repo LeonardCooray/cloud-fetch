@@ -162,6 +162,7 @@ func (e *Engine) install(c Config, client *torrent.Client) {
 	e.ts = map[string]*Torrent{}
 	e.store = newStore(filepath.Join(c.DownloadDirectory, storeDirName))
 	e.restoreLocked()
+	e.forgetCheck()
 }
 
 func (e *Engine) restoreLocked() {

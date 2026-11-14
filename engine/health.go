@@ -34,11 +34,6 @@ func (e *Engine) Check(timeout time.Duration) error {
 		go p.run(e)
 	}
 	e.probeMu.Unlock()
-	select {
-	case <-p.done:
-		return p.err
-	default:
-	}
 	t := time.NewTimer(timeout)
 	defer t.Stop()
 	select {
@@ -61,8 +56,8 @@ func (p *healthProbe) stale() bool {
 }
 
 // forgetCheck drops a finished check's result, so the next one sees a client
-// that just closed. A running one stays to be shared; it's waiting on e.mut
-// and will see the closed client itself.
+// that just closed or started. A running one stays to be shared; it's waiting
+// on e.mut and will see the change itself.
 func (e *Engine) forgetCheck() {
 	e.probeMu.Lock()
 	defer e.probeMu.Unlock()

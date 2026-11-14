@@ -64,7 +64,8 @@ func TestCheckTimesOutOnAWedgedEngineWithOneProbe(t *testing.T) {
 	}
 }
 
-// A result isn't reused past a close: the client it vouched for is gone.
+// A result isn't reused past a close or a start: the client it was about has
+// changed.
 func TestCheckIsFreshAfterClose(t *testing.T) {
 	e := startEngine(t, t.TempDir())
 	if err := e.Check(time.Second); err != nil {
@@ -73,6 +74,14 @@ func TestCheckIsFreshAfterClose(t *testing.T) {
 	e.Close()
 	if err := e.Check(time.Second); !errors.Is(err, errNotRunning) {
 		t.Fatalf("Check straight after Close: %v, want %v", err, errNotRunning)
+	}
+	// and the reverse: a client that just started isn't reported missing
+	if err := configureOnFreePort(t, e, e.Config()); err != nil {
+		t.Fatal(err)
+	}
+	defer closeEngine(e)
+	if err := e.Check(time.Second); err != nil {
+		t.Fatalf("Check straight after Configure: %v", err)
 	}
 }
 

@@ -173,6 +173,10 @@ check_health() {
 	local health_url health_resolve health_pending resp rc result deadline
 	# already down: the systemd checks report that
 	still_up "$1" || return 0
+	if ! command -v curl >/dev/null; then
+		say "curl not found, so not checking /healthz"
+		return 0
+	fi
 	if ! health_target; then
 		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
 		return 0

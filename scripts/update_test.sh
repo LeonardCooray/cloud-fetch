@@ -57,6 +57,7 @@ target() {
 		tries=$((tries + 1))
 		if [ "$tries" -gt 100 ] || ! kill -0 "$fake_pid" 2>/dev/null; then
 			echo "stand-in process never became $python"
+			kill "$fake_pid" 2>/dev/null
 			return
 		fi
 		sleep 0.05
