@@ -298,7 +298,9 @@ func (t *Torrent) startVerify() {
 	tt := t.t
 	go func() {
 		defer close(v.done)
-		// piece by piece so a cancel stops it before the next piece
+		// piece by piece: Piece.VerifyDataContext queues the hash before it
+		// looks at ctx, so a cancel is checked here first, and the log gets
+		// the piece index
 		for i := 0; i < tt.NumPieces(); i++ {
 			if ctx.Err() != nil {
 				return
@@ -319,8 +321,8 @@ func (t *Torrent) startVerify() {
 }
 
 // stopVerify cancels a running verification and waits for it to return.
-// dropLocked calls it before dropping the torrent; a client close doesn't
-// need to (see closeClientLocked).
+// dropLocked calls it before dropping the torrent, and startVerify before
+// starting another; a client close doesn't need to (see closeClientLocked).
 func (t *Torrent) stopVerify() {
 	if t.verify == nil {
 		return

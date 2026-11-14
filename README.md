@@ -139,7 +139,7 @@ To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts t
 To run a build from source instead of a release, build it with a current Go and copy it over the binary, then restart:
 
 ``` sh
-curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go1.27.4.linux-amd64.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
+tgz=$(mktemp) && curl -fsSLo "$tgz" https://go.dev/dl/go1.27.4.linux-amd64.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf "$tgz"; rm -f "$tgz"
 export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
 go install github.com/LeonardCooray/cloud-fetch@latest
 install -m 755 ~/go/bin/cloud-fetch /usr/local/bin/cloud-fetch && systemctl restart cloud-fetch
