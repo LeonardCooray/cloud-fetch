@@ -136,7 +136,7 @@ Any Linux works; Ubuntu 24.04 LTS or Debian 12 are good choices. Run these as ro
    systemctl daemon-reload && systemctl start cloud-fetch
    ```
 
-To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts the service and puts the previous binary back if the new one doesn't stay up. `cloud-fetch-update --check` shows the installed and latest versions, `cloud-fetch-update 0.1.1` installs a specific release, and `cloud-fetch-update --rollback` undoes the last update. To get a newer updater, rerun step 1.
+To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts the service and puts the previous binary back if the new one doesn't stay up, or if its [health check](#health-check) still says `unavailable`, or nothing answers it, 30 seconds after the restart settles (with `--domain` and no certificate cached yet, a timeout or TLS failure is let through, since the first certificate may still be being issued). It works out the health check URL from the running service's port, host and domain, whether they're flags in `ExecStart` or `PORT` and `DOMAIN` in the environment file, and connects to the address the server listens on, on this machine, so the domain's DNS doesn't matter. It skips the check if the service's main process isn't the installed binary, for example a wrapper script that doesn't `exec` it. To use a different URL, run `HEALTH_URL=http://127.0.0.1:3000/healthz cloud-fetch-update`, or skip the check with `HEALTH_URL= cloud-fetch-update` (with sudo, put the variable after it: `sudo HEALTH_URL= cloud-fetch-update`). Releases from before the health check (0.1.3 and earlier) answer it with 401 or 404, and the updater then relies on systemd alone, so rolling back to one still works. `cloud-fetch-update --check` shows the installed and latest versions, `cloud-fetch-update 0.1.1` installs a specific release, and `cloud-fetch-update --rollback` undoes the last update. To get a newer updater, rerun step 1.
 
 To run a build from source instead of a release, build it with a current Go and copy it over the binary, then restart:
 
@@ -211,6 +211,10 @@ Run once with `--acme-staging` first. Staging certificates aren't trusted by bro
 To give someone a file without giving them the password, use the link button on its row in Downloads and pick how long the link lasts: 1 hour, 24 hours or 7 days. The link is copied to the clipboard and downloads without a login until it expires. Range requests work, so VLC can seek and IDM can resume. On a folder, you get one link per finished file. Links only download; they can't delete or list anything.
 
 Links are signed with a random key kept in `share.key` next to the config file, so they survive restarts. **Revoke all share links** in Settings replaces that key, which stops every link shared so far. There's no way to revoke a single link.
+
+### Health check
+
+`GET /healthz` answers `ok` (200) when the server is up and the torrent engine is running and responding, and `unavailable` (503) otherwise, including for a couple of seconds while settings that restart the torrent client are applied. It needs no login and doesn't count toward the login lockout, so point an uptime monitor at `https://fetch.example.com/healthz`. It says nothing else, not even the version, since anyone can call it, and it reuses an answer for up to a second, so polling it hard doesn't load the server. The reason for a failure goes to the log (`Health check failing: ...`) when the result changes.
 
 ### Search providers
 

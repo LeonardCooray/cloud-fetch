@@ -29,6 +29,8 @@ jobs:
         run: go vet ./...
       - name: Shellcheck
         run: shellcheck scripts/*.sh
+      - name: Updater tests
+        run: bash scripts/update_test.sh
       - name: Build
         run: go build -v -o /dev/null .
       - name: Test

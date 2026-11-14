@@ -58,6 +58,9 @@ type Server struct {
 	//share links; the key is loaded on first use
 	shareMu     sync.Mutex
 	shareSecret []byte
+	//last /healthz result, so only changes are logged
+	healthMu  sync.Mutex
+	healthErr error
 	//torrent engine
 	engine *engine.Engine
 	state  struct {
@@ -320,7 +323,17 @@ func (s *Server) handler() http.Handler {
 	if s.Log {
 		h = requestlog.Wrap(h)
 	}
-	return h
+	// /healthz skips the login so monitors need no password, and checks no
+	// credentials, so it can't be used to guess one past the throttle. It
+	// skips the request log too, which monitors would flood.
+	logged := h
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			s.serveHealth(w, r)
+			return
+		}
+		logged.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) reconfigure(c engine.Config) error {

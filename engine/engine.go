@@ -27,6 +27,9 @@ type Engine struct {
 	limits  *limiters
 	// the last queue order handed out; see nextOrderLocked
 	lastOrder int64
+	// the latest health check, running or finished; see Check
+	probeMu sync.Mutex
+	probe   *healthProbe
 }
 
 func New() *Engine {
@@ -125,6 +128,7 @@ func (e *Engine) closeClientLocked() {
 	e.client.Close()
 	e.client = nil
 	e.ts = map[string]*Torrent{}
+	e.forgetCheck()
 }
 
 // clientConfig also sets l to c's speed limits, since the client shares them.
@@ -158,6 +162,7 @@ func (e *Engine) install(c Config, client *torrent.Client) {
 	e.ts = map[string]*Torrent{}
 	e.store = newStore(filepath.Join(c.DownloadDirectory, storeDirName))
 	e.restoreLocked()
+	e.forgetCheck()
 }
 
 func (e *Engine) restoreLocked() {
