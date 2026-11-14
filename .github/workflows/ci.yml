@@ -151,11 +151,15 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
+      - name: Check out code
+        uses: actions/checkout@v7
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build
         uses: docker/build-push-action@v7
         with:
+          # a path context, not the action's default Git context, so .dockerignore applies
+          context: .
           file: .github/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/386,linux/arm/v7,linux/arm/v6
           push: false
@@ -195,6 +199,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
+          context: .
           file: .github/Dockerfile
           build-args: VERSION=${{ steps.meta.outputs.version }}
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/386,linux/arm/v7,linux/arm/v6
