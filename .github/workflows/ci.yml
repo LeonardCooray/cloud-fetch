@@ -60,10 +60,22 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false # same key as Build & Test; finishing first, it would save a cache without the -race builds
+      # setup-go sets GOTOOLCHAIN=local, so a pin needing a newer Go than go.mod's fails here until go.mod catches up
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       # fails on vulnerabilities the code can reach; stdlib ones are judged against the Go that builds releases.
-      # setup-go sets GOTOOLCHAIN=local, so a pin needing a newer Go than go.mod's fails here until go.mod catches up.
+      # Every OS the releases ship (goreleaser.yml), built the same way (CGO off), so OS-specific code paths count.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          status=0
+          for os in linux darwin windows; do
+            echo "::group::GOOS=$os"
+            GOOS=$os govulncheck ./... || status=1
+            echo "::endgroup::"
+          done
+          exit $status
   # ================
   # BROWSER TESTS
   # ================

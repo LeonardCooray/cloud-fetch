@@ -41,3 +41,5 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^ci:" # Dependabot's GitHub Actions bumps
+      - "^e2e:" # Dependabot's Playwright bumps
