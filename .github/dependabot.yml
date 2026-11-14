@@ -2,7 +2,8 @@ version: 2
 # One grouped PR per ecosystem each Monday instead of one per dependency.
 # Cooldown skips releases younger than 5 days (a yanked or hijacked release usually surfaces by then).
 # Dependabot doesn't move Go itself to a patched release (go get only raises the go line when a
-# dependency needs it), so stdlib fixes are a hand bump of go.mod's toolchain, flagged by govulncheck in ci.yml.
+# dependency needs it), so stdlib fixes are a hand bump of go.mod's toolchain plus the golang tag in
+# .github/Dockerfile (CI fails if they differ), flagged by govulncheck in ci.yml.
 updates:
   - package-ecosystem: gomod
     directory: /

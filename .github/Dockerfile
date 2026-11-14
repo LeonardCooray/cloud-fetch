@@ -15,7 +15,9 @@ COPY . .
 # git history to read it from
 ARG VERSION=0.0.0-src
 ARG TARGETOS TARGETARCH TARGETVARIANT
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} go build \
+# Go rejects a non-empty GOARM it doesn't know even off arm, so only arm gets one
+RUN if [ "$TARGETARCH" = arm ]; then export GOARM=${TARGETVARIANT#v}; fi; \
+  GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \
   -o /tmp/bin
