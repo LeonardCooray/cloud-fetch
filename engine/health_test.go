@@ -63,3 +63,29 @@ func TestCheckTimesOutOnAWedgedEngineWithOneProbe(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// The health check needs no login, so a result is reused rather than taking
+// the engine's locks for every caller.
+func TestCheckReusesAResultForASecond(t *testing.T) {
+	e := startEngine(t, t.TempDir())
+	defer closeEngine(e)
+	if err := e.Check(time.Second); err != nil {
+		t.Fatalf("first Check: %v", err)
+	}
+	e.mut.Lock()
+	client := e.client
+	e.client = nil
+	e.mut.Unlock()
+	defer func() {
+		e.mut.Lock()
+		e.client = client
+		e.mut.Unlock()
+	}()
+	if err := e.Check(time.Second); err != nil {
+		t.Fatalf("Check straight after: %v, want the reused nil", err)
+	}
+	time.Sleep(checkReuse + 100*time.Millisecond)
+	if err := e.Check(time.Second); !errors.Is(err, errNotRunning) {
+		t.Fatalf("Check after %s: %v, want %v", checkReuse, err, errNotRunning)
+	}
+}

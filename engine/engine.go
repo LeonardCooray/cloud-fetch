@@ -27,7 +27,7 @@ type Engine struct {
 	limits  *limiters
 	// the last queue order handed out; see nextOrderLocked
 	lastOrder int64
-	// the health check in flight, if any; see Check
+	// the latest health check, running or finished; see Check
 	probeMu sync.Mutex
 	probe   *healthProbe
 }

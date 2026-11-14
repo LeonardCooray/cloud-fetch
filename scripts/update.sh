@@ -115,7 +115,8 @@ health_target() {
 	case $addr in
 	\[*) ;;
 	*[!0-9.]*)
-		addr=$(getent ahosts "$addr" | awk 'NR == 1 { print $1 }') || true
+		# Go listens on a name's first IPv4 address if it has one
+		addr=$( (getent ahostsv4 "$addr" || getent ahosts "$addr") | awk 'NR == 1 { print $1 }') || true
 		case $addr in *:*) addr="[$addr]" ;; esac
 		;;
 	esac
@@ -149,7 +150,7 @@ check_health() {
 	while still_up "$1"; do
 		# -k: it's this machine, and a staging certificate is fine
 		rc=0
-		resp=$(curl -ks --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || rc=$?
+		resp=$(curl -ks --noproxy '*' --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || rc=$?
 		code=${resp: -3} resp=${resp%???}
 		case $code in
 		200)
@@ -160,7 +161,7 @@ check_health() {
 			code=other
 			;;
 		503) ;;
-		[0-9][0-9][0-9] | 000) code=other ;;
+		[0-9][0-9][0-9]) code=other ;;
 		esac
 		# curl exit 7: nothing listening (yet)
 		if [ "$rc" != 0 ]; then
@@ -212,7 +213,7 @@ rollback() {
 		say "rolled back to ${to:-unknown version}"
 	else
 		journalctl -u "$SERVICE" -n 20 --no-pager >&2 || true
-		die "rolled back to ${to:-unknown version}, but $SERVICE isn't staying up"
+		die "rolled back to ${to:-unknown version}, but $SERVICE isn't up and healthy on it either"
 	fi
 }
 
@@ -295,10 +296,10 @@ main() {
 
 	journalctl -u "$SERVICE" -n 20 --no-pager >&2 || true
 	if [ -f "$BIN.prev" ]; then
-		say "$SERVICE didn't stay up on $want, rolling back"
+		say "$SERVICE isn't up and healthy on $want, rolling back"
 		rollback
 	fi
-	die "$SERVICE didn't stay up on $want"
+	die "$SERVICE isn't up and healthy on $want"
 }
 
 main "$@"

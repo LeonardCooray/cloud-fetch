@@ -214,7 +214,7 @@ Links are signed with a random key kept in `share.key` next to the config file, 
 
 ### Health check
 
-`GET /healthz` answers `ok` (200) when the server is up and the torrent engine is running and responding, and `unavailable` (503) otherwise, including for a couple of seconds while settings that restart the torrent client are applied. It needs no login and doesn't count toward the login lockout, so point an uptime monitor at `https://fetch.example.com/healthz`. It says nothing else, not even the version, since anyone can call it, and it reuses its last answer for up to a second, so polling it hard doesn't load the server. The reason for a failure goes to the log (`Health check failing: ...`) when the result changes.
+`GET /healthz` answers `ok` (200) when the server is up and the torrent engine is running and responding, and `unavailable` (503) otherwise, including for a couple of seconds while settings that restart the torrent client are applied. It needs no login and doesn't count toward the login lockout, so point an uptime monitor at `https://fetch.example.com/healthz`. It says nothing else, not even the version, since anyone can call it, and it reuses an answer for up to a second, so polling it hard doesn't load the server. The reason for a failure goes to the log (`Health check failing: ...`) when the result changes.
 
 ### Search providers
 

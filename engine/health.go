@@ -7,23 +7,30 @@ import (
 
 var errCheckTimeout = errors.New("engine didn't answer in time")
 
+// checkReuse is how long a finished check's result is handed out again. The
+// health check needs no login, so this caps how often anyone can make the
+// engine take its locks; the 1s torrent poller already takes them as often.
+const checkReuse = time.Second
+
 type healthProbe struct {
 	done chan struct{}
-	err  error // set before done is closed
+	err  error     // set before done is closed
+	at   time.Time // when it finished, set before done is closed
 }
 
 // Check reports whether the torrent client is running and answering: it
 // takes the engine lock, then the client's own lock (the one anacrolix #1119
 // leaks). It gives up after timeout, but the probe keeps waiting, and later
 // calls share it instead of starting another, so a wedged engine costs one
-// stuck goroutine however often it's checked.
+// stuck goroutine however often it's checked. A result up to checkReuse old
+// is reused.
 func (e *Engine) Check(timeout time.Duration) error {
 	e.probeMu.Lock()
 	p := e.probe
-	if p == nil {
+	if p == nil || p.stale() {
 		p = &healthProbe{done: make(chan struct{})}
 		e.probe = p
-		go e.runProbe(p)
+		go p.run(e)
 	}
 	e.probeMu.Unlock()
 	t := time.NewTimer(timeout)
@@ -36,11 +43,20 @@ func (e *Engine) Check(timeout time.Duration) error {
 	}
 }
 
-func (e *Engine) runProbe(p *healthProbe) {
+// stale reports whether p finished more than checkReuse ago; one still
+// running is shared, never replaced.
+func (p *healthProbe) stale() bool {
+	select {
+	case <-p.done:
+		return time.Since(p.at) >= checkReuse
+	default:
+		return false
+	}
+}
+
+func (p *healthProbe) run(e *Engine) {
 	p.err = e.probeClient()
-	e.probeMu.Lock()
-	e.probe = nil
-	e.probeMu.Unlock()
+	p.at = time.Now()
 	close(p.done)
 }
 

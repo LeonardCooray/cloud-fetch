@@ -6,14 +6,9 @@ import (
 	"time"
 )
 
-const (
-	// bounds how long /healthz waits for the engine; uptime monitors
-	// commonly give up after 5 to 10 seconds
-	healthTimeout = 2 * time.Second
-	// /healthz needs no login, so this caps how often anyone can make the
-	// engine take its locks; the 1s torrent poller already takes them as often
-	healthCacheFor = time.Second
-)
+// healthTimeout bounds how long /healthz waits for the engine; uptime
+// monitors commonly give up after 5 to 10 seconds.
+const healthTimeout = 2 * time.Second
 
 // serveHealth answers /healthz for uptime monitors and cloud-fetch-update.
 // It runs before auth and the login throttle, so it says only "ok" or
@@ -25,7 +20,8 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	err := s.health()
+	err := s.engine.Check(healthTimeout)
+	s.noteHealth(err)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
@@ -36,24 +32,16 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok\n"))
 }
 
-func (s *Server) health() error {
-	s.healthMu.Lock()
-	if !s.healthAt.IsZero() && time.Since(s.healthAt) < healthCacheFor {
-		err := s.healthErr
-		s.healthMu.Unlock()
-		return err
-	}
-	s.healthMu.Unlock()
-	// concurrent callers share the engine's probe
-	err := s.engine.Check(healthTimeout)
+// noteHealth logs when the result, or the reason for failing, changes.
+func (s *Server) noteHealth(err error) {
 	s.healthMu.Lock()
 	defer s.healthMu.Unlock()
-	wasBad := s.healthErr != nil
-	s.healthAt, s.healthErr = time.Now(), err
-	if err != nil && !wasBad {
+	prev := s.healthErr
+	s.healthErr = err
+	switch {
+	case err != nil && (prev == nil || prev.Error() != err.Error()):
 		log.Printf("Health check failing: %s", err)
-	} else if err == nil && wasBad {
+	case err == nil && prev != nil:
 		log.Printf("Health check passing again")
 	}
-	return err
 }
