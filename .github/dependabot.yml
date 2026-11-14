@@ -1,0 +1,42 @@
+version: 2
+# One grouped PR per ecosystem each Monday instead of one per dependency.
+# Cooldown skips releases younger than 5 days (a yanked or hijacked release usually surfaces by then).
+# Dependabot never bumps the go/toolchain lines, so stdlib fixes come from govulncheck in ci.yml.
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      go:
+        patterns: ["*"]
+    commit-message:
+      prefix: deps
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+  # e2e/ is dev-only (Playwright for CI); the web UI is vendored and has no package.json
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      e2e:
+        patterns: ["*"]
+    commit-message:
+      prefix: e2e

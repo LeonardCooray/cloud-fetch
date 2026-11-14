@@ -2,6 +2,10 @@ name: CI
 on:
   pull_request: {}
   push: {}
+  # a new advisory can land against unchanged code; only govulncheck runs on the schedule
+  schedule:
+    - cron: "41 3 * * 1" # Mondays 03:41 UTC
+  workflow_dispatch: {}
 # least privilege by default; release jobs ask for what they need
 permissions:
   contents: read
@@ -11,6 +15,7 @@ jobs:
   # ================
   test:
     name: Build & Test
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +46,22 @@ jobs:
           node-version: "24"
       - name: UI unit tests
         run: node --test "static/files/js/**/*.test.mjs"
+  # ================
+  # VULNERABILITY CHECK
+  # ================
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # fails on vulnerabilities the code can reach; stdlib ones are judged against go.mod's toolchain
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
   # ================
   # BROWSER TESTS
   # ================
