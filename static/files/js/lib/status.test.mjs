@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STATUS_LABELS, torrentStatus, eta, statusLine, totalRate, isFinished } from "./status.js";
+import { STATUS_LABELS, torrentStatus, eta, statusLine, totalRate, isFinished, ordinal } from "./status.js";
 
 const GB = 1e9;
 const MB = 1e6;
@@ -23,7 +23,7 @@ test("torrentStatus tolerates missing fields", () => {
 
 test("every status has a sentence-case label", () => {
   assert.deepEqual(STATUS_LABELS, {
-    loading: "Loading", downloading: "Downloading", seeding: "Seeding", done: "Done", paused: "Paused", held: "On hold",
+    loading: "Loading", downloading: "Downloading", seeding: "Seeding", done: "Done", paused: "Paused", held: "On hold", queued: "Queued",
   });
 });
 
@@ -120,6 +120,8 @@ test("totalRate sums the download rate of running torrents only", () => {
     b: t({ DownloadRate: 0.5 * MB }),
     paused: t({ Started: false, DownloadRate: 9 * MB }),
     loading: t({ Loaded: false, DownloadRate: 9 * MB }),
+    queued: t({ Queued: true, DownloadRate: 9 * MB }),
+    held: t({ SpacePaused: true, DownloadRate: 9 * MB }),
     junk: t({ DownloadRate: NaN }),
   }), 2.5 * MB);
 });
@@ -141,4 +143,23 @@ test("a torrent the low-disk guard holds reads On hold until it's complete", () 
   assert.equal(eta(held), null);
   assert.equal(torrentStatus({ ...held, Percent: 100 }, { seeding: false }), "done");
   assert.equal(torrentStatus({ ...held, Started: false, SpacePaused: false }), "paused");
+});
+
+test("a torrent waiting for a download slot reads Queued with its place in line", () => {
+  const queued = { Loaded: true, Started: true, Queued: true, QueuePosition: 2, Percent: 40, Downloaded: 40, Size: 100, DownloadRate: 0 };
+  assert.equal(torrentStatus(queued), "queued");
+  assert.equal(STATUS_LABELS.queued, "Queued");
+  assert.deepEqual(statusLine(queued), { main: "40 B of 100 B · 40%", rate: null, note: "2nd in line" });
+  assert.equal(statusLine({ ...queued, QueuePosition: 0 }).note, "waiting for a slot");
+  assert.equal(eta(queued), null);
+  // queued wins over the disk hold: it won't download when space is back either
+  assert.equal(torrentStatus({ ...queued, SpacePaused: true }), "queued");
+  assert.equal(torrentStatus({ ...queued, Percent: 100 }), "seeding");
+  assert.equal(torrentStatus({ ...queued, Started: false, Queued: false }), "paused");
+  assert.equal(isFinished(queued), false);
+});
+
+test("ordinal suffixes", () => {
+  const got = [1, 2, 3, 4, 10, 11, 12, 13, 21, 22, 23, 101, 111, 112].map(ordinal);
+  assert.deepEqual(got, ["1st", "2nd", "3rd", "4th", "10th", "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th", "112th"]);
 });

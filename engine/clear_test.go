@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/anacrolix/torrent"
+	"github.com/anacrolix/torrent/bencode"
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 func TestCompleteFollowsPickedFiles(t *testing.T) {
@@ -84,4 +86,37 @@ func closedDone() chan struct{} {
 	c := make(chan struct{})
 	close(c)
 	return c
+}
+
+// An empty file has no pieces, so it's never missing anything. Counting it
+// as 0% kept torrents with one (an empty .nfo, say) from ever finishing, and
+// with a queue, holding their slot for good.
+func TestEmptyFileDoesNotKeepATorrentUnfinished(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "pack")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.bin"), make([]byte, 4*pieceLen), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "empty.nfo"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	info := metainfo.Info{PieceLength: pieceLen}
+	if err := info.BuildFromFilePath(root); err != nil {
+		t.Fatal(err)
+	}
+	b, err := bencode.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mi := &metainfo.MetaInfo{InfoBytes: b}
+	e := queueing(t, dir, 1)
+	if err := e.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+		t.Fatal(err)
+	}
+	next := addIdle(t, e, "next")
+	completeEventually(t, e, mi.HashInfoBytes().HexString())
+	wantRunning(t, e, "next", next)
 }

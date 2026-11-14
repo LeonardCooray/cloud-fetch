@@ -21,6 +21,11 @@ type record struct {
 	Started  bool   `json:"started"`
 	// StoppedFiles lists the file paths deselected with StopFile.
 	StoppedFiles []string `json:"stoppedFiles,omitempty"`
+	// Order is when it was last started (Unix ns), its place in the
+	// download queue; records from before the queue have none and go first.
+	Order int64 `json:"order,omitempty"`
+	// Forced marks a torrent started over the active limit.
+	Forced bool `json:"forced,omitempty"`
 }
 
 type savedTorrent struct {

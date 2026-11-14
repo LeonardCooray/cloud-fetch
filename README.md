@@ -13,6 +13,8 @@
 * Embedded torrent search, with the provider list kept in this repo
 * Optional cleanup: **Delete Downloads After Days** in Settings (0, the default, keeps everything) deletes downloads nothing has changed in for that long, hourly and whenever settings are saved. Anything an unfinished or paused torrent still needs is kept
 * Low-disk guard: below **Minimum Free Space GB** in Settings (5 GB by default, 0 turns it off) downloads go on hold, and they resume on their own once 1 GB more than that is free
+* Speed limits: **Max Download KB/s** and **Max Upload KB/s** in Settings cap all peer traffic (0, the default, is unlimited). Caps hold on average: after a quiet spell up to a second's worth (at least 256 KiB down, 1 MiB up) can go at once. A download cap also slows streaming a file that's still downloading
+* Download queue: with **Max Active Torrents** set (0, the default, is no limit), torrents beyond that many wait as Queued and start in the order they were started as others finish or are paused. **Start now** on a queued torrent, or streaming one of its files, starts it straight away as an extra
 * Real-time updates in a mobile-friendly UI
 
 ### Install

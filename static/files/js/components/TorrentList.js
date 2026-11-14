@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { html } from "../html.js";
 import { Icon } from "../icons.js";
 import { sortTorrents } from "../lib/tree.js";
@@ -7,11 +7,25 @@ import { FileTable } from "./FileTable.js";
 
 function TorrentCard({ t, seeding, api, onError }) {
   const [showFiles, setShowFiles] = useState(false);
+  const [refocus, setRefocus] = useState(false);
+  const card = useRef(null);
+  const pause = useRef(null);
   const act = (action) => api.torrent(action, t.InfoHash).catch(onError);
   const status = torrentStatus(t, { seeding });
   const line = statusLine(t, { seeding });
   const pct = t.Percent || 0;
-  return html`<article class=${"card torrent is-" + status} aria-label=${t.Name || t.InfoHash}>
+  const startNow = () => api.torrent("startnow", t.InfoHash).then(() => setRefocus(true), onError);
+  // Start now is hidden while the low-disk guard holds the torrent, since
+  // the server refuses it then. It goes away once the torrent leaves the
+  // queue, which would drop keyboard focus on the page; Pause takes it
+  // instead, unless focus has moved elsewhere in the meantime
+  useLayoutEffect(() => {
+    if (!refocus || status === "queued") return;
+    setRefocus(false);
+    const active = document.activeElement;
+    if (pause.current && (!active || active === document.body || card.current.contains(active))) pause.current.focus();
+  }, [refocus, status]);
+  return html`<article ref=${card} class=${"card torrent is-" + status} aria-label=${t.Name || t.InfoHash}>
     ${!t.Loaded && html`<div class="overlay"><${Icon} name="loader" class="spin" /> Loading</div>`}
     <div class="torrent-top">
       <div class="info">
@@ -20,8 +34,10 @@ function TorrentCard({ t, seeding, api, onError }) {
       <div class="buttons">
         <button type="button" class=${showFiles ? "on" : ""} aria-pressed=${showFiles} title="Files"
           onClick=${() => setShowFiles(!showFiles)}><${Icon} name="file" /><span class="btn-label">Files</span></button>
+        ${status === "queued" && !t.SpacePaused && html`<button type="button" class="go" title="Start now, over the active torrents limit"
+          onClick=${startNow}><${Icon} name="play" /><span class="btn-label">Start now</span></button>`}
         ${t.Started
-          ? html`<button type="button" title="Pause" onClick=${() => act("stop")}><${Icon} name="pause" /><span class="btn-label">Pause</span></button>`
+          ? html`<button type="button" ref=${pause} title="Pause" onClick=${() => act("stop")}><${Icon} name="pause" /><span class="btn-label">Pause</span></button>`
           : html`<button type="button" class="go" title="Resume" onClick=${() => act("start")}><${Icon} name="play" /><span class="btn-label">Resume</span></button>`}
         ${!t.Started && html`<button type="button" class="danger" title=${t.Loaded ? "Remove" : "Cancel"} onClick=${() => act("delete")}>
           <${Icon} name=${t.Loaded ? "trash" : "x"} /><span class="btn-label">${t.Loaded ? "Remove" : "Cancel"}</span>

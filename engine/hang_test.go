@@ -153,7 +153,7 @@ func TestFailedRestoreLeavesEngineStoppedNotHung(t *testing.T) {
 
 	attempts := 0
 	realNew := newClient
-	newClient = func(c Config) (*torrent.Client, error) {
+	newClient = func(c Config, l *limiters) (*torrent.Client, error) {
 		attempts++
 		return nil, errors.New("port taken")
 	}
@@ -204,12 +204,12 @@ func TestRestoreRetriesUntilThePreviousConfigStarts(t *testing.T) {
 
 	calls := 0
 	realNew := newClient
-	newClient = func(c Config) (*torrent.Client, error) {
+	newClient = func(c Config, l *limiters) (*torrent.Client, error) {
 		calls++
 		if calls <= 3 { // the new config, then two failed restores
 			return nil, errors.New("port taken")
 		}
-		return realNew(c)
+		return realNew(c, l)
 	}
 	t.Cleanup(func() { newClient = realNew })
 

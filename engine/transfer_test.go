@@ -281,11 +281,11 @@ func TestHybridMagnetWithBtmhFirstIsAccepted(t *testing.T) {
 }
 
 func TestDisableEncryptionForcesPlaintext(t *testing.T) {
-	on := clientConfig(Config{})
+	on := clientConfig(Config{}, newLimiters())
 	if !on.HeaderObfuscationPolicy.Preferred || on.HeaderObfuscationPolicy.RequirePreferred {
 		t.Fatalf("default policy %+v, want encryption preferred but not required", on.HeaderObfuscationPolicy)
 	}
-	off := clientConfig(Config{DisableEncryption: true})
+	off := clientConfig(Config{DisableEncryption: true}, newLimiters())
 	if off.HeaderObfuscationPolicy.Preferred || !off.HeaderObfuscationPolicy.RequirePreferred {
 		t.Fatalf("DisableEncryption policy %+v, want plaintext only", off.HeaderObfuscationPolicy)
 	}
@@ -301,8 +301,8 @@ func TestTransfersDoNotWaitForTheKeepalive(t *testing.T) {
 	// a leecher closed mid-handshake counts as a bad accept, and the seeder
 	// would then refuse all of 127.0.0.0/24 for the rest of the test
 	orig := newClient
-	newClient = func(c Config) (*torrent.Client, error) {
-		cfg := clientConfig(c)
+	newClient = func(c Config, l *limiters) (*torrent.Client, error) {
+		cfg := clientConfig(c, l)
 		cfg.DisableAcceptRateLimiting = true
 		return torrent.NewClient(cfg)
 	}
