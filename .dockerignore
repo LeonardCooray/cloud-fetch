@@ -8,3 +8,10 @@
 !engine/
 !server/
 !static/
+# the allowed directories come back whole, so state that could be written
+# inside them (share.key and certs sit next to the config) is excluded again
+**/share.key
+**/certs
+**/downloads
+**/cloud-fetch.json
+**/cloud-torrent.json
