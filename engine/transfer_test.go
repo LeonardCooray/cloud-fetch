@@ -295,6 +295,8 @@ func TestDisableEncryptionForcesPlaintext(t *testing.T) {
 // hold a ready piece until its keepalive timer, a minute by default (#1070).
 // Without a shorter timer, about 1 in 130 of these transfers took 13s or more
 // under load; a healthy one takes well under a second even under -race.
+// At that rate 40 transfers catch a return of the bug about 1 run in 4, so
+// this is a tripwire across CI runs, not proof on its own.
 func TestTransfersDoNotWaitForTheKeepalive(t *testing.T) {
 	// a leecher closed mid-handshake counts as a bad accept, and the seeder
 	// would then refuse all of 127.0.0.0/24 for the rest of the test

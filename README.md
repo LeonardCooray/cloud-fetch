@@ -17,7 +17,7 @@
 
 ### Install
 
-**From source** (needs [Go](https://go.dev/dl/) 1.26 or later, which then fetches the Go 1.27.4 toolchain the releases build with; the Go in Ubuntu's `apt` is too old)
+**From source** (needs [Go](https://go.dev/dl/) 1.26 or later, but `go install` builds with the Go you run, so use 1.27.4 or later as the releases do, for its security fixes; the Go in Ubuntu's `apt` is too old)
 
 ``` sh
 go install github.com/LeonardCooray/cloud-fetch@latest
@@ -139,7 +139,7 @@ To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts t
 To run a build from source instead of a release, build it with a current Go and copy it over the binary, then restart:
 
 ``` sh
-rm -rf /usr/local/go && curl -fsSL https://go.dev/dl/go1.27.4.linux-amd64.tar.gz | tar -C /usr/local -xz
+curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go1.27.4.linux-amd64.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
 export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
 go install github.com/LeonardCooray/cloud-fetch@latest
 install -m 755 ~/go/bin/cloud-fetch /usr/local/bin/cloud-fetch && systemctl restart cloud-fetch
