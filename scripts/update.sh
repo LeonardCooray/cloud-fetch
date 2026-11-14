@@ -7,8 +7,9 @@
 #   cloud-fetch-update --rollback put back the binary the last update replaced
 #   cloud-fetch-update --force    reinstall, or replace a source build
 #
-# BIN, SERVICE, REPO and HEALTH_URL override the defaults below. The service
-# must already exist; see "Without Docker" in the README.
+# BIN, SERVICE, REPO, SETTLE, HEALTH_WAIT and HEALTH_URL override the
+# defaults below. The service must already exist; see "Without Docker" in
+# the README.
 set -euo pipefail
 
 BIN=${BIN:-/usr/local/bin/cloud-fetch}
@@ -107,6 +108,8 @@ health_target() {
 		shift
 	done
 	case $port in '' | *[!0-9]*) return 1 ;; esac
+	# autocert's cache uses the lowercase name without a trailing dot
+	domain=${domain%.} domain=${domain,,}
 	case $host in
 	'' | 0.0.0.0 | :: | '[::]') addr=127.0.0.1 ;;
 	*:*) addr="[${host#[}" addr="${addr%]}]" ;;
@@ -234,8 +237,6 @@ rollback() {
 
 main() {
 	local mode=update want="" force=0
-	# checked now: bash arithmetic on it later would end the script mid-update
-	case $HEALTH_WAIT in '' | *[!0-9]*) die "HEALTH_WAIT must be a whole number of seconds, not '$HEALTH_WAIT'" ;; esac
 	while [ $# -gt 0 ]; do
 		case $1 in
 		--check) mode=check ;;
@@ -259,6 +260,11 @@ main() {
 		echo "latest:    $(latest_version)"
 		exit 0
 	fi
+
+	# checked now: bash arithmetic on it later would end the script mid-update
+	case $HEALTH_WAIT in '' | *[!0-9]*) die "HEALTH_WAIT must be a whole number of seconds, not '$HEALTH_WAIT'" ;; esac
+	# base 10, or a leading zero (08) would be read as octal
+	HEALTH_WAIT=$((10#$HEALTH_WAIT))
 
 	[ "$(id -u)" = 0 ] || die "run as root (sudo $0 ...)"
 	systemctl cat "$SERVICE" >/dev/null 2>&1 || die "no systemd service named $SERVICE"

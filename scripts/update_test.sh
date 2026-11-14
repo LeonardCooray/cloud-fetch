@@ -52,7 +52,15 @@ target() {
 	env $vars python3 -c 'import time; time.sleep(30)' "$@" >/dev/null 2>&1 &
 	fake_pid=$!
 	# env execs python3; until then /proc shows env
-	while [ "$(readlink -f "/proc/$fake_pid/exe")" != "$python" ]; do sleep 0.05; done
+	local tries=0
+	while [ "$(readlink -f "/proc/$fake_pid/exe")" != "$python" ]; do
+		tries=$((tries + 1))
+		if [ "$tries" -gt 100 ] || ! kill -0 "$fake_pid" 2>/dev/null; then
+			echo "stand-in process never became $python"
+			return
+		fi
+		sleep 0.05
+	done
 	if health_target; then
 		echo "$health_url${health_resolve:+ $health_resolve}${health_pending:+ pending}"
 	else
@@ -74,6 +82,7 @@ mkdir -p "$certs/conf/certs" "$certs/own"
 touch "$certs/conf/certs/f.example" "$certs/own/f.example+rsa"
 check "cached certificate next to the config" "$(cd "$certs" && target '' --domain f.example --config-path conf/cloud-fetch.json)" "https://f.example:3000/healthz f.example:3000:127.0.0.1"
 check "cached certificate in --cert-cache" "$(target '' --domain f.example --cert-cache "$certs/own")" "https://f.example:3000/healthz f.example:3000:127.0.0.1"
+check "a mixed-case domain with a trailing dot" "$(target '' --domain F.Example. --cert-cache "$certs/own")" "https://f.example:3000/healthz f.example:3000:127.0.0.1"
 check "a certificate for another domain" "$(target '' --domain g.example --cert-cache "$certs/own")" "https://g.example:3000/healthz g.example:3000:127.0.0.1 pending"
 check "--host address" "$(target '' --host=10.0.0.5)" "http://10.0.0.5:3000/healthz"
 check "--host IPv6" "$(target '' -h ::1 -p 3000)" "http://[::1]:3000/healthz"
@@ -106,10 +115,24 @@ check "check_health: unavailable" "$(health $'unavailable\n503' 0)" fail
 check "check_health: nothing listening" "$(health 000 7)" fail
 check "check_health: no answer" "$(health 000 28)" fail
 check "check_health: HEALTH_URL= skips" "$(HEALTH_URL='' health 000 7)" pass
+# with --domain: a timeout passes only while no certificate is cached
+unset HEALTH_URL
+health_target() {
+	health_url=https://f.example:443/healthz health_resolve=f.example:443:127.0.0.1 health_pending=$pending
+}
+pending=1
+check "check_health: timeout, certificate pending" "$(health 000 28)" pass
+check "check_health: TLS failure, certificate pending" "$(health 000 35)" pass
+check "check_health: empty reply, certificate pending" "$(health 000 52)" fail
+pending=""
+check "check_health: timeout, certificate cached" "$(health 000 28)" fail
 
 rm -rf "$certs"
 
-check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_WAIT=30s main 2>&1)" "update: HEALTH_WAIT must be a whole number of seconds, not '30s'"
+check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_WAIT=30s main --rollback 2>&1)" "update: HEALTH_WAIT must be a whole number of seconds, not '30s'"
+# id -u comes straight after the HEALTH_WAIT check; a fake one reports the
+# value main went on with, then stops it as not root
+check "HEALTH_WAIT with a leading zero is read as decimal" "$(id() { echo "wait=$HEALTH_WAIT" >&2; echo 1000; }; HEALTH_WAIT=08 main --rollback 2>&1 | head -n 1)" "wait=8"
 
 if [ "$fails" != 0 ]; then
 	echo "$fails failed"
