@@ -19,8 +19,9 @@ type healthProbe struct {
 }
 
 // Check reports whether the torrent client is running and answering: it
-// takes the engine lock, then the client's own lock (the one anacrolix #1119
-// leaks). It gives up after timeout, but the probe keeps waiting, and later
+// takes the engine lock, then the client's own lock, which is where anacrolix
+// lock leaks like #1119 (fixed in v1.62.0) leave things stuck. It gives up
+// after timeout, but the probe keeps waiting, and later
 // calls share it instead of starting another, so a wedged engine costs one
 // stuck goroutine however often it's checked. A result up to checkReuse old
 // is reused.
