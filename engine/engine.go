@@ -63,8 +63,8 @@ func (e *Engine) Configure(c Config) error {
 	if c.MaxDownloadKBps < 0 || c.MaxDownloadKBps > maxRateKBps || c.MaxUploadKBps < 0 || c.MaxUploadKBps > maxRateKBps {
 		return fmt.Errorf("Speed limits must be between 0 and %d KB/s", maxRateKBps)
 	}
-	if c.MaxActiveTorrents < 0 || c.MaxActiveTorrents > 10000 {
-		return fmt.Errorf("Max active torrents must be between 0 and 10000")
+	if c.MaxActiveTorrents < 0 || c.MaxActiveTorrents > maxActiveTorrents {
+		return fmt.Errorf("Max active torrents must be between 0 and %d", maxActiveTorrents)
 	}
 	e.mut.Lock()
 	if e.client != nil && sameClient(e.config, c) {
@@ -501,7 +501,10 @@ func (e *Engine) StartNow(infohash string) error {
 func (e *Engine) forceLocked(t *Torrent) {
 	t.forced = true
 	e.queueLocked()
-	e.saveLocked(t)
+	// a free slot ends the override at once, and unforceLocked saved that
+	if t.forced {
+		e.saveLocked(t)
+	}
 }
 
 // nextOrderLocked hands out queue orders: the time, but never at or below
@@ -511,17 +514,27 @@ func (e *Engine) nextOrderLocked() int64 {
 	return e.lastOrder
 }
 
+// maxActiveTorrents caps the MaxActiveTorrents setting.
+const maxActiveTorrents = 10000
+
 // queueLocked lets the MaxActiveTorrents earliest-started unfinished torrents
 // download and queues the rest. Paused and finished torrents, and ones with
 // every file deselected, hold no slot; a torrent waiting for metadata holds
-// one. A forced torrent downloads
+// one. A started torrent that wants a slot again (a file ticked, a piece
+// gone bad) joins the back, like a Resume, rather than bump a download. A forced torrent downloads
 // regardless and turns into an ordinary one when its turn for a slot comes.
 // The low-disk guard holds downloads separately (SpacePaused), so a slot it
 // holds stays taken and nothing queued starts in its place.
 func (e *Engine) queueLocked() {
 	var waiting []*Torrent
 	for _, t := range e.ts {
-		if t.wantsSlot() {
+		want := t.wantsSlot()
+		if want && t.idle {
+			t.order = e.nextOrderLocked()
+			e.saveLocked(t)
+		}
+		t.idle = t.Started && !want
+		if want {
 			waiting = append(waiting, t)
 			continue
 		}
@@ -704,7 +717,6 @@ func (e *Engine) selectFile(infohash, path string, selected bool) error {
 	if file == nil {
 		return fmt.Errorf("Missing file %s", path)
 	}
-	hadSlot := t.wantsSlot()
 	if selected {
 		delete(t.stopped, path)
 		file.Download()
@@ -716,12 +728,8 @@ func (e *Engine) selectFile(infohash, path string, selected bool) error {
 		file.SetPriority(torrent.PiecePriorityNone)
 	}
 	e.upsertTorrent(t.t)
-	if !hadSlot && t.wantsSlot() {
-		// a finished torrent with a file ticked again wants a slot back: it
-		// joins the back, like a Resume, rather than bump a running download
-		t.order = e.nextOrderLocked()
-	}
-	// deselecting what's left can finish a torrent and free its slot
+	// deselecting what's left can finish a torrent and free its slot, and
+	// ticking a file again can make it want one
 	e.queueLocked()
 	e.saveLocked(t)
 	return nil

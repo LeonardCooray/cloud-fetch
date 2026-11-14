@@ -35,6 +35,9 @@ type Torrent struct {
 	// forced: started over MaxActiveTorrents by Start now or a stream; it
 	// keeps downloading until it finishes, is paused or a slot reaches it
 	forced bool
+	// idle: at the last queue pass it was started but wanted no slot
+	// (finished, or nothing picked)
+	idle bool
 	// downloading mirrors anacrolix's data download flag, so it's only
 	// flipped on a change; anacrolix allows downloading on a new torrent
 	downloading bool

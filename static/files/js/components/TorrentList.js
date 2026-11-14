@@ -15,9 +15,10 @@ function TorrentCard({ t, seeding, api, onError }) {
   const line = statusLine(t, { seeding });
   const pct = t.Percent || 0;
   const startNow = () => api.torrent("startnow", t.InfoHash).then(() => setRefocus(true), onError);
-  // Start now goes away once the torrent leaves the queue, which would drop
-  // keyboard focus on the page; Pause takes it instead, unless focus has
-  // moved elsewhere in the meantime
+  // Start now is hidden while the low-disk guard holds the torrent, since
+  // the server refuses it then. It goes away once the torrent leaves the
+  // queue, which would drop keyboard focus on the page; Pause takes it
+  // instead, unless focus has moved elsewhere in the meantime
   useLayoutEffect(() => {
     if (!refocus || status === "queued") return;
     setRefocus(false);
@@ -33,7 +34,7 @@ function TorrentCard({ t, seeding, api, onError }) {
       <div class="buttons">
         <button type="button" class=${showFiles ? "on" : ""} aria-pressed=${showFiles} title="Files"
           onClick=${() => setShowFiles(!showFiles)}><${Icon} name="file" /><span class="btn-label">Files</span></button>
-        ${status === "queued" && html`<button type="button" class="go" title="Start now, over the active torrents limit"
+        ${status === "queued" && !t.SpacePaused && html`<button type="button" class="go" title="Start now, over the active torrents limit"
           onClick=${startNow}><${Icon} name="play" /><span class="btn-label">Start now</span></button>`}
         ${t.Started
           ? html`<button type="button" ref=${pause} title="Pause" onClick=${() => act("stop")}><${Icon} name="pause" /><span class="btn-label">Pause</span></button>`

@@ -102,3 +102,17 @@ test("speed limits are saved from Settings, and out-of-range values are refused"
     }
   }).toPass();
 });
+
+test.describe("while disk space is low", () => {
+  // no machine has a million GB free, so the guard reads the real disk as low
+  test.use({ serverOptions: { maxActive: 1, minFreeGB: 1000000 } });
+
+  test("a queued torrent stays Queued, without a Start now the server would refuse", async ({ page, app }) => {
+    const { "b.bin": b } = await addAll(app, page, ["a.bin", "b.bin"]);
+    // the server checks free space every 5 seconds
+    await expect(page.getByRole("status").filter({ hasText: "Downloads are on hold" })).toBeVisible({ timeout: 10_000 });
+    await expect(b.locator(".badge")).toHaveText("Queued");
+    await expect(b.getByRole("button", { name: "Start now" })).toHaveCount(0);
+    await expect(b.getByRole("button", { name: "Pause" })).toBeVisible();
+  });
+});
