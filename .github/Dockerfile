@@ -19,9 +19,12 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} go build \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \
   -o /tmp/bin
+# CA roots from a floating tag on purpose: the pinned Go image stops being
+# rebuilt once its patch release is superseded, which would freeze the bundle
+FROM --platform=$BUILDPLATFORM alpine:3 AS certs
 # run stage
 FROM scratch
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 WORKDIR /app
 COPY --from=build /tmp/bin /app/bin
 ENTRYPOINT ["/app/bin"]

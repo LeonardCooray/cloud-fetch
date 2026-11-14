@@ -36,7 +36,7 @@ jobs:
         run: |
           want=$(go mod edit -json | jq -r '.Toolchain // ("go" + .Go)')
           want=${want#go}
-          got=$(sed -n 's/^FROM .*golang:\([0-9][0-9.]*\)-alpine.*/\1/p' .github/Dockerfile)
+          got=$(sed -n 's/^FROM .*golang:\([^-@ ]*\).* AS build$/\1/p' .github/Dockerfile)
           if [ "$got" != "$want" ]; then
             echo "::error file=.github/Dockerfile::the build stage uses Go '${got}' but go.mod's toolchain is ${want}"; exit 1
           fi
@@ -148,7 +148,7 @@ jobs:
   docker_build:
     name: Docker build
     needs: test
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
