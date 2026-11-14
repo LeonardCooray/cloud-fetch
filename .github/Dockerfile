@@ -16,7 +16,9 @@ COPY . .
 ARG VERSION=0.0.0-src
 ARG TARGETOS TARGETARCH TARGETVARIANT
 # Go rejects a non-empty GOARM it doesn't know even off arm, so only arm gets one
-RUN if [ "$TARGETARCH" = arm ]; then export GOARM=${TARGETVARIANT#v}; fi; \
+# the build cache stays in a cache mount, out of the layer the GHA cache exports
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  if [ "$TARGETARCH" = arm ]; then export GOARM=${TARGETVARIANT#v}; fi; \
   GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \

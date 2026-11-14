@@ -15,3 +15,5 @@
 **/downloads
 **/cloud-fetch.json
 **/cloud-torrent.json
+**/.DS_Store
+**/tmp
