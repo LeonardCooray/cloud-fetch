@@ -95,6 +95,11 @@ func (torrent *Torrent) updateLoaded(t *torrent.Torrent) {
 		}
 		file.Completed = completed
 		file.Percent = percent(int64(file.Completed), int64(file.Chunks))
+		if file.Size == 0 {
+			// no pieces to fetch, so there's nothing missing either; at 0%
+			// it would keep its torrent from ever finishing
+			file.Percent = 100
+		}
 		file.f = f
 
 		totalChunks += file.Chunks
