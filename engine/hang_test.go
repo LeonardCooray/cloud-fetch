@@ -1,9 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
+	"log"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,6 +82,65 @@ func TestReconfiguringDuringVerificationDoesNotFreeze(t *testing.T) {
 		})
 		within(t, 5*time.Second, "GetTorrents after reconfigure", func() { e.GetTorrents() })
 		within(t, 5*time.Second, "closing the client", func() { closeEngine(e) })
+	}
+}
+
+// lockedBuffer collects log output written from other goroutines.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// closeClientLocked doesn't stop verifications, so their next piece check
+// lands on a closed torrent. Before anacrolix v1.62.0 that check kept the
+// client's lock (#1119); the old client must still answer afterwards, and
+// the ended verification isn't logged as a failure.
+func TestClosingDuringVerificationLeavesTheClientUsable(t *testing.T) {
+	logs := &lockedBuffer{}
+	prev := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	const n = 20
+	running := 0
+	for i := 0; i < n; i++ {
+		e := startEngine(t, t.TempDir())
+		mi := manyPieces(t)
+		if err := e.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+			t.Fatal(err)
+		}
+		e.mut.Lock()
+		v := e.ts[mi.HashInfoBytes().HexString()].verify
+		e.mut.Unlock()
+		time.Sleep(time.Duration(i) * 250 * time.Microsecond)
+		select {
+		case <-v.done:
+		default:
+			running++
+		}
+		old := e.client
+		within(t, 5*time.Second, "closing the client", func() { closeEngine(e) })
+		within(t, 5*time.Second, "the cut-short verification", func() { <-v.done })
+		within(t, 5*time.Second, "the closed client's lock", func() { old.Torrents() })
+	}
+	// a close after the verification finished tests nothing
+	if running < n/2 {
+		t.Fatalf("only %d of %d closes came while a verification was running", running, n)
+	}
+	// the engine's own verify line; anacrolix's slog output lands here too
+	if regexp.MustCompile(`verify [0-9a-f]{40}: piece `).MatchString(logs.String()) {
+		t.Fatalf("a verification ended by the close was logged:\n%s", logs)
 	}
 }
 

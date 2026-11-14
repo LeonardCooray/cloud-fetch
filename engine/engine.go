@@ -102,16 +102,13 @@ func (e *Engine) Close() {
 	e.closeClientLocked()
 }
 
-// closeClientLocked stops verifications before closing: anacrolix/torrent
-// leaks the client lock if a piece check starts on a closed torrent
-// (anacrolix #1119, unfixed as of v1.61.0 and master d913b30f520e).
+// closeClientLocked leaves running verifications to end on their own: their
+// next piece check fails on the closed torrent. That needs anacrolix/torrent
+// v1.62.0 or later; earlier releases kept the client lock there (#1119).
 // Afterwards the engine has no client until install gives it one.
 func (e *Engine) closeClientLocked() {
 	if e.client == nil {
 		return
-	}
-	for _, t := range e.ts {
-		t.stopVerify()
 	}
 	e.client.Close()
 	e.client = nil
@@ -124,13 +121,6 @@ func clientConfig(c Config) *torrent.ClientConfig {
 	config.NoUpload = !c.EnableUpload
 	config.Seed = c.EnableSeeding
 	config.ListenPort = c.IncomingPort
-	// anacrolix/torrent's connection writer arms its wake-up after checking
-	// for work, so data queued in between waits for this timer (anacrolix
-	// #1070, fixed on master by #1078 but in no release up to v1.61.0). The
-	// 1 minute default stalled downloads; 5s bounds it at the cost of a
-	// 4-byte keepalive per idle connection every 5s. Drop this once a release
-	// with #1078 is in go.mod.
-	config.KeepAliveTimeout = 5 * time.Second
 	if c.DisableEncryption {
 		config.HeaderObfuscationPolicy = torrent.HeaderObfuscationPolicy{Preferred: false, RequirePreferred: true}
 	}
@@ -308,15 +298,21 @@ func (t *Torrent) startVerify() {
 	tt := t.t
 	go func() {
 		defer close(v.done)
-		// piece by piece rather than VerifyDataContext, so a cancel is seen
-		// before the next piece check can start on a closed torrent
+		// piece by piece: Piece.VerifyDataContext queues the hash before it
+		// looks at ctx, so a cancel is checked here first, and the log gets
+		// the piece index
 		for i := 0; i < tt.NumPieces(); i++ {
 			if ctx.Err() != nil {
 				return
 			}
 			if err := tt.Piece(i).VerifyDataContext(ctx); err != nil {
-				if ctx.Err() == nil {
-					log.Printf("verify %s: piece %d: %s", tt.InfoHash().HexString(), i, err)
+				select {
+				case <-tt.Closed():
+					// a client close ends a verification this way; not an error
+				default:
+					if ctx.Err() == nil {
+						log.Printf("verify %s: piece %d: %s", tt.InfoHash().HexString(), i, err)
+					}
 				}
 				return
 			}
@@ -325,7 +321,8 @@ func (t *Torrent) startVerify() {
 }
 
 // stopVerify cancels a running verification and waits for it to return.
-// Every close of the torrent must come after it (see closeClientLocked).
+// dropLocked calls it before dropping the torrent, and startVerify before
+// starting another; a client close doesn't need to (see closeClientLocked).
 func (t *Torrent) stopVerify() {
 	if t.verify == nil {
 		return
