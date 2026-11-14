@@ -148,7 +148,7 @@ still_up() {
 
 # health_result HTTP_CODE CURL_EXIT BODY CERT_PENDING prints what one try
 # means: ok, unhealthy (it says so), old (a release before /healthz, which
-# answers 401 or 404), refused (nothing listening), waiting (the first Let's
+# answers 401 or 404, or a page that isn't "ok"), refused (nothing listening), waiting (the first Let's
 # Encrypt certificate may still be being issued) or broken.
 health_result() {
 	case $2 in
@@ -161,7 +161,8 @@ health_result() {
 	case $1 in
 	200) [ "${3%$'\n'}" = ok ] && echo ok || echo old ;;
 	5[0-9][0-9]) echo unhealthy ;;
-	*) echo old ;;
+	401 | 404) echo old ;;
+	*) echo broken ;;
 	esac
 }
 
@@ -215,12 +216,11 @@ check_health() {
 }
 
 restart_and_check() {
-	local before healthy=1
+	local before
 	systemctl restart "$SERVICE"
 	before=$(systemctl show -p NRestarts --value "$SERVICE")
 	sleep "$SETTLE"
-	check_health "$before" || healthy=0
-	still_up "$before" && [ "$healthy" = 1 ]
+	check_health "$before" && still_up "$before"
 }
 
 # cp then rename, so $BIN is never missing or half-written
@@ -269,9 +269,9 @@ main() {
 	fi
 
 	# checked now: bash arithmetic on HEALTH_WAIT later would end the script
-	# mid-update, and a SETTLE sleep can't take would skip the settle time
+	# mid-update, and a SETTLE that sleep rejects would skip the settle time
 	case $HEALTH_WAIT in '' | *[!0-9]*) die "HEALTH_WAIT must be a whole number of seconds, not '$HEALTH_WAIT'" ;; esac
-	case $SETTLE in '' | *[!0-9]*) die "SETTLE must be a whole number of seconds, not '$SETTLE'" ;; esac
+	[[ $SETTLE =~ ^[0-9]+(\.[0-9]+)?[smhd]?$ ]] || die "SETTLE must be a time sleep takes, such as 10, 2.5 or 1m, not '$SETTLE'"
 	# base 10, or a leading zero (08) would be read as octal
 	HEALTH_WAIT=$((10#$HEALTH_WAIT))
 

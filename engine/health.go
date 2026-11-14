@@ -56,8 +56,8 @@ func (p *healthProbe) stale() bool {
 }
 
 // forgetCheck drops a finished check's result, so the next one sees a client
-// that just closed or started. A running one stays to be shared; it's waiting
-// on e.mut and will see the change itself.
+// that just closed or started. Call it with e.mut held: a probe still running
+// is then waiting on e.mut, will see the change itself, and stays shared.
 func (e *Engine) forgetCheck() {
 	e.probeMu.Lock()
 	defer e.probeMu.Unlock()
@@ -70,20 +70,18 @@ func (e *Engine) forgetCheck() {
 	}
 }
 
+// run holds e.mut throughout, so Configure can't close the client mid-check
+// (GetTorrents nests the two locks the same way every second), and so a
+// forgetCheck under e.mut sees either a finished probe or one that hasn't
+// looked at the client yet.
 func (p *healthProbe) run(e *Engine) {
-	p.err = e.probeClient()
-	p.at = time.Now()
-	close(p.done)
-}
-
-func (e *Engine) probeClient() error {
-	// e.mut stays held so Configure can't close this client mid-check;
-	// GetTorrents nests the two locks the same way every second
 	e.mut.Lock()
 	defer e.mut.Unlock()
 	if e.client == nil {
-		return errNotRunning
+		p.err = errNotRunning
+	} else {
+		e.client.Torrents()
 	}
-	e.client.Torrents()
-	return nil
+	p.at = time.Now()
+	close(p.done)
 }

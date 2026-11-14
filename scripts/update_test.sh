@@ -22,6 +22,8 @@ check "200 ok" "$(health_result 200 0 $'ok\n' '')" ok
 check "200 with another body" "$(health_result 200 0 '<html>' '')" old
 check "401 from an old release behind --auth" "$(health_result 401 0 Unauthorized '')" old
 check "404 from an old release" "$(health_result 404 0 '' '')" old
+check "400 (http sent to an https port)" "$(health_result 400 0 '' '')" broken
+check "301 (the http-to-https redirect)" "$(health_result 301 0 '' '')" broken
 check "503" "$(health_result 503 0 $'unavailable\n' '')" unhealthy
 check "500" "$(health_result 500 0 '' '')" unhealthy
 check "refused" "$(health_result 000 7 '' '')" refused
@@ -132,7 +134,8 @@ check "check_health: timeout, certificate cached" "$(health 000 28)" fail
 rm -rf "$certs"
 
 check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_WAIT=30s main --rollback 2>&1)" "update: HEALTH_WAIT must be a whole number of seconds, not '30s'"
-check "SETTLE that isn't a number stops before anything changes" "$(SETTLE=ten main --rollback 2>&1)" "update: SETTLE must be a whole number of seconds, not 'ten'"
+check "SETTLE that sleep wouldn't take stops before anything changes" "$(SETTLE=ten main --rollback 2>&1)" "update: SETTLE must be a time sleep takes, such as 10, 2.5 or 1m, not 'ten'"
+check "SETTLE in minutes still works" "$(id() { echo 1000; }; SETTLE=1m main --rollback 2>&1)" "update: run as root (sudo $0 ...)"
 # id -u comes straight after these checks; a fake one reports the
 # value main went on with, then stops it as not root
 check "HEALTH_WAIT with a leading zero is read as decimal" "$(id() { echo "wait=$HEALTH_WAIT" >&2; echo 1000; }; HEALTH_WAIT=08 main --rollback 2>&1 | head -n 1)" "wait=8"
