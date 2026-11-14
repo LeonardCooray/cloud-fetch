@@ -72,6 +72,7 @@ check "--port" "$(target '' --port 3300 --auth a:b)" "http://127.0.0.1:3300/heal
 check "-p=, single-dash long flag" "$(target '' -p=3301 -auth=a:b)" "http://127.0.0.1:3301/healthz"
 check "default port" "$(target '' --log)" "http://127.0.0.1:3000/healthz"
 check "PORT from the environment" "$(target PORT=3200)" "http://127.0.0.1:3200/healthz"
+check "an empty PORT is ignored, as opts does" "$(target 'PORT= DOMAIN=')" "http://127.0.0.1:3000/healthz"
 check "a flag overrides PORT" "$(target PORT=3200 --port 3201)" "http://127.0.0.1:3201/healthz"
 check "--domain" "$(target '' --domain f.example --port 443)" "https://f.example:443/healthz f.example:443:127.0.0.1 pending"
 check "DOMAIN from the environment" "$(target 'DOMAIN=e.example PORT=443')" "https://e.example:443/healthz e.example:443:127.0.0.1 pending"
@@ -133,6 +134,10 @@ check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_
 # id -u comes straight after the HEALTH_WAIT check; a fake one reports the
 # value main went on with, then stops it as not root
 check "HEALTH_WAIT with a leading zero is read as decimal" "$(id() { echo "wait=$HEALTH_WAIT" >&2; echo 1000; }; HEALTH_WAIT=08 main --rollback 2>&1 | head -n 1)" "wait=8"
+
+# piped to bash, it still runs main (here as far as the Linux check)
+# shellcheck disable=SC2329 # the fake uname is exported to the child bash
+check "piped to bash runs main" "$(uname() { echo Darwin; }; export -f uname; bash -s -- --check <"$(dirname "$0")/update.sh" 2>&1)" "update: this updates a Linux systemd install"
 
 if [ "$fails" != 0 ]; then
 	echo "$fails failed"

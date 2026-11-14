@@ -77,11 +77,12 @@ health_target() {
 	[ "$(readlink -f "/proc/$pid/exe")" = "$(readlink -f "$BIN")" ] || return 1
 	mapfile -d '' args <"/proc/$pid/cmdline" || return 1
 	mapfile -d '' env <"/proc/$pid/environ" || return 1
-	# opts reads these two from the environment, and flags override them
+	# opts reads these two from the environment, unless empty, and flags
+	# override them
 	for val in "${env[@]}"; do
 		case $val in
-		PORT=*) port=${val#PORT=} ;;
-		DOMAIN=*) domain=${val#DOMAIN=} ;;
+		PORT=?*) port=${val#PORT=} ;;
+		DOMAIN=?*) domain=${val#DOMAIN=} ;;
 		esac
 	done
 	set -- "${args[@]:1}"
@@ -170,6 +171,8 @@ health_result() {
 # waiting if the service goes down, which they catch.
 check_health() {
 	local health_url health_resolve health_pending resp rc result deadline
+	# already down: the systemd checks report that
+	still_up "$1" || return 0
 	if ! health_target; then
 		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
 		return 0
@@ -326,6 +329,7 @@ main() {
 }
 
 # sourcing it (scripts/update_test.sh) only defines the functions
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+# (piped to bash, BASH_SOURCE is empty)
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
 	main "$@"
 fi
