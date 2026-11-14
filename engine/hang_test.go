@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"log"
-	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -109,8 +109,9 @@ func (b *lockedBuffer) String() string {
 // the ended verification isn't logged as a failure.
 func TestClosingDuringVerificationLeavesTheClientUsable(t *testing.T) {
 	logs := &lockedBuffer{}
+	prev := log.Writer()
 	log.SetOutput(logs)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(prev) })
 	for i := 0; i < 20; i++ {
 		e := startEngine(t, t.TempDir())
 		mi := manyPieces(t)
@@ -123,7 +124,8 @@ func TestClosingDuringVerificationLeavesTheClientUsable(t *testing.T) {
 		time.Sleep(50 * time.Millisecond) // let a pending piece check reach the closed torrent
 		within(t, 5*time.Second, "the closed client's lock", func() { old.Torrents() })
 	}
-	if strings.Contains(logs.String(), "verify ") {
+	// the engine's own verify line; anacrolix's slog output lands here too
+	if regexp.MustCompile(`verify [0-9a-f]{40}: piece `).MatchString(logs.String()) {
 		t.Fatalf("a verification ended by the close was logged:\n%s", logs)
 	}
 }

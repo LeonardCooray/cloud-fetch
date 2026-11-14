@@ -296,6 +296,15 @@ func TestDisableEncryptionForcesPlaintext(t *testing.T) {
 // Without a shorter timer, about 1 in 130 of these transfers took 13s or more
 // under load; a healthy one takes well under a second even under -race.
 func TestTransfersDoNotWaitForTheKeepalive(t *testing.T) {
+	// a leecher closed mid-handshake counts as a bad accept, and the seeder
+	// would then refuse all of 127.0.0.0/24 for the rest of the test
+	orig := newClient
+	newClient = func(c Config) (*torrent.Client, error) {
+		cfg := clientConfig(c)
+		cfg.DisableAcceptRateLimiting = true
+		return torrent.NewClient(cfg)
+	}
+	t.Cleanup(func() { newClient = orig })
 	seed, mi := seeder(t)
 	ih := mi.HashInfoBytes().HexString()
 	for i := 0; i < 40; i++ {
