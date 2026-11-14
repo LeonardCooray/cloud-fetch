@@ -138,6 +138,24 @@ func (torrent *Torrent) Complete() bool {
 	return true
 }
 
+// wantsSlot reports whether the torrent needs one of the MaxActiveTorrents
+// download slots: started, unfinished, and with something picked. Complete
+// can't tell the last part: with nothing picked it goes by the whole torrent.
+func (torrent *Torrent) wantsSlot() bool {
+	if !torrent.Started || torrent.Complete() {
+		return false
+	}
+	if !torrent.Loaded {
+		return true
+	}
+	for _, f := range torrent.Files {
+		if f != nil && f.Started {
+			return true
+		}
+	}
+	return false
+}
+
 func (torrent *Torrent) verifying() bool {
 	if torrent.verify == nil {
 		return false

@@ -10,10 +10,16 @@ import (
 // rate.Limiter's burst is on the 32-bit release targets.
 const maxRateKBps = 2000000
 
-// minBurst is the smallest bucket a limiter gets. anacrolix trims each peer
-// read to the download burst and rejects peer requests bigger than the
-// upload burst, so it must stay well above a 16 KiB chunk.
+// minBurst is the smallest download bucket. anacrolix trims each peer read
+// to the download burst, so it must stay well above a 16 KiB chunk.
 const minBurst = 256 << 10
+
+// maxPeerRequest is the largest peer request anacrolix accepts (set as its
+// MaxAllocPeerRequestDataPerConn) and the smallest upload bucket. While
+// uploads are unlimited anacrolix accepts requests up to that size, and it
+// panics if one is ever bigger than the upload burst, which a cap switched
+// on later would otherwise make it.
+const maxPeerRequest = 1 << 20
 
 // limiters are the client's download and upload rate limiters. They outlive
 // any one client and are changed in place, because anacrolix keeps the
@@ -27,7 +33,7 @@ type limiters struct {
 func newLimiters() *limiters {
 	return &limiters{
 		down: rate.NewLimiter(rate.Inf, minBurst),
-		up:   rate.NewLimiter(rate.Inf, minBurst),
+		up:   rate.NewLimiter(rate.Inf, maxPeerRequest),
 	}
 }
 
@@ -35,15 +41,16 @@ func newLimiters() *limiters {
 func (l *limiters) set(c Config) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.apply(l.down, c.MaxDownloadKBps)
-	l.apply(l.up, c.MaxUploadKBps)
+	l.apply(l.down, c.MaxDownloadKBps, minBurst)
+	l.apply(l.up, c.MaxUploadKBps, maxPeerRequest)
 }
 
-func (l *limiters) apply(rl *rate.Limiter, kbps int) {
-	limit, burst := rate.Inf, minBurst
+// apply gives rl a bucket of one second at the cap, and at least floor.
+func (l *limiters) apply(rl *rate.Limiter, kbps, floor int) {
+	limit, burst := rate.Inf, floor
 	if kbps > 0 {
 		b := kbps * 1000
-		limit, burst = rate.Limit(b), max(b, minBurst)
+		limit, burst = rate.Limit(b), max(b, floor)
 	}
 	if rl.Limit() == limit && rl.Burst() == burst {
 		return

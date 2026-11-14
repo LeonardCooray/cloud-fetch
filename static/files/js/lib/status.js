@@ -91,12 +91,13 @@ export function ordinal(n) {
 }
 
 // totalRate is the header's overall download speed. The engine only reports
-// a per-torrent DownloadRate, so it's summed here; a stopped or loading
-// torrent can hold a stale rate, so only running ones count.
+// a per-torrent DownloadRate, so it's summed here. A stopped or loading
+// torrent can hold a stale rate, and a queued or held one's rate is only
+// data on disk being verified, so only ones actually downloading count.
 export function totalRate(torrents) {
   let sum = 0;
   for (const t of Object.values(torrents || {})) {
-    if (t && t.Loaded && t.Started && Number.isFinite(t.DownloadRate)) sum += t.DownloadRate;
+    if (t && t.Loaded && t.Started && !t.Queued && !t.SpacePaused && Number.isFinite(t.DownloadRate)) sum += t.DownloadRate;
   }
   return sum;
 }

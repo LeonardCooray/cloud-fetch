@@ -120,6 +120,8 @@ test("totalRate sums the download rate of running torrents only", () => {
     b: t({ DownloadRate: 0.5 * MB }),
     paused: t({ Started: false, DownloadRate: 9 * MB }),
     loading: t({ Loaded: false, DownloadRate: 9 * MB }),
+    queued: t({ Queued: true, DownloadRate: 9 * MB }),
+    held: t({ SpacePaused: true, DownloadRate: 9 * MB }),
     junk: t({ DownloadRate: NaN }),
   }), 2.5 * MB);
 });

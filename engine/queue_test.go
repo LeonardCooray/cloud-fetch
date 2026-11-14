@@ -145,6 +145,53 @@ func TestAutoStartOffAddsTorrentsPausedNotQueued(t *testing.T) {
 	wantQueued(t, e, "a", a, 1)
 }
 
+// Ticking a file again in a finished torrent makes it want a slot again; it
+// gets one at the back, like a Resume, without bumping what's running.
+func TestRetickingAFinishedTorrentJoinsTheBack(t *testing.T) {
+	seed, mi := seeder(t)
+	ih := mi.HashInfoBytes().HexString()
+	leech := queueing(t, t.TempDir(), 1)
+	if err := leech.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+		t.Fatal(err)
+	}
+	if err := leech.StopFile(ih, "pack/b.bin"); err != nil {
+		t.Fatal(err)
+	}
+	connect(t, leech, seed, ih)
+	filePercentEventually(t, leech, ih, "pack/a.bin", 100)
+	later := addIdle(t, leech, "later")
+	wantRunning(t, leech, "later", later)
+	if err := leech.StartFile(ih, "pack/b.bin"); err != nil {
+		t.Fatal(err)
+	}
+	wantRunning(t, leech, "later", later)
+	wantQueued(t, leech, "re-ticked", ih, 1)
+}
+
+// With every file deselected there's nothing to download, so the torrent
+// gives up its slot; ticking one again puts it at the back.
+func TestTorrentWithNothingPickedHoldsNoSlot(t *testing.T) {
+	e := queueing(t, t.TempDir(), 1)
+	mi := multiFileTorrent(t, t.TempDir())
+	if err := e.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+		t.Fatal(err)
+	}
+	ih := mi.HashInfoBytes().HexString()
+	other := addIdle(t, e, "other")
+	wantQueued(t, e, "other", other, 1)
+	for _, p := range []string{"pack/a.bin", "pack/b.bin"} {
+		if err := e.StopFile(ih, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantRunning(t, e, "other", other)
+	if err := e.StartFile(ih, "pack/a.bin"); err != nil {
+		t.Fatal(err)
+	}
+	wantRunning(t, e, "other", other)
+	wantQueued(t, e, "re-ticked", ih, 1)
+}
+
 func TestDeletingARunningTorrentFreesItsSlot(t *testing.T) {
 	e := queueing(t, t.TempDir(), 1)
 	a, b := addIdle(t, e, "a"), addIdle(t, e, "b")

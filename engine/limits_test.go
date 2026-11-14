@@ -52,6 +52,19 @@ func TestSpeedLimitsChangeWithoutRestart(t *testing.T) {
 	}
 }
 
+// While uploads are unlimited anacrolix accepts peer requests up to its
+// allocation cap; it panics if one turns out bigger than the upload burst,
+// so a cap switched on later must never shrink the burst below that.
+func TestUploadBurstAlwaysFitsTheLargestAcceptedRequest(t *testing.T) {
+	l := newLimiters()
+	for _, kbps := range []int{0, 1, 50, 100, 5000, 0} {
+		cfg := clientConfig(Config{MaxUploadKBps: kbps}, l)
+		if got, need := l.up.Burst(), cfg.MaxAllocPeerRequestDataPerConn; got < need {
+			t.Fatalf("upload cap %d KB/s: burst %d, below the %d byte requests anacrolix accepts", kbps, got, need)
+		}
+	}
+}
+
 // A restart (here a port change) must keep the limits.
 func TestSpeedLimitsSurviveAClientRestart(t *testing.T) {
 	e := startEngineWith(t, Config{DownloadDirectory: t.TempDir(), AutoStart: true, MaxDownloadKBps: 300})
@@ -65,10 +78,10 @@ func TestSpeedLimitsSurviveAClientRestart(t *testing.T) {
 	}
 }
 
-const bigSize = 1 << 20
+const bigSize = 4 << 20
 
-// bigSeeder seeds one 1 MiB file, four times the limiters' smallest burst,
-// so a limit shows once the first burst is spent.
+// bigSeeder seeds one 4 MiB file, four times the largest first burst a
+// limiter here allows, so a limit shows once that burst is spent.
 func bigSeeder(t *testing.T, c Config) (*Engine, *metainfo.MetaInfo) {
 	t.Helper()
 	dir := t.TempDir()
@@ -98,13 +111,13 @@ func bigSeeder(t *testing.T, c Config) (*Engine, *metainfo.MetaInfo) {
 	return e, mi
 }
 
-// limitedThenLifted checks the transfer crawls for 3 s (unlimited, 1 MiB
-// over loopback takes well under a second), then lifts the limit on limited
-// and expects the rest to arrive.
+// limitedThenLifted checks the transfer crawls for 3 s (unlimited, 4 MiB
+// over loopback takes about a second), then lifts the limit on limited and
+// expects the rest to arrive.
 func limitedThenLifted(t *testing.T, leech, limited *Engine, ih string) {
 	t.Helper()
 	time.Sleep(3 * time.Second)
-	// 256 KiB burst + 3 s at 50 KB/s is about 39%
+	// at most a 1 MiB burst + 3 s at 50 KB/s, about 29%
 	if got := torrentState(t, leech, ih).Percent; got >= 60 {
 		t.Fatalf("%v%% after 3 s at 50 KB/s, want the limit to hold it under 60%%", got)
 	}
