@@ -63,8 +63,8 @@ jobs:
       # setup-go sets GOTOOLCHAIN=local, so a pin needing a newer Go than go.mod's fails here until go.mod catches up
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-      # fails on vulnerabilities the code can reach; stdlib ones are judged against the Go that builds releases.
-      # Every OS the releases ship (goreleaser.yml), built the same way (CGO off), so OS-specific code paths count.
+      # fails on vulnerabilities the code can reach; stdlib ones are judged against the Go that builds the release
+      # binaries. Every OS goreleaser ships, built the same way (CGO off), so OS-specific code paths count.
       - name: govulncheck
         env:
           CGO_ENABLED: "0"
