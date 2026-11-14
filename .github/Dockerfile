@@ -1,18 +1,34 @@
-# build stage
-FROM golang:alpine AS build
+# build stage: runs on the builder's own platform and cross-compiles, so the
+# multi-platform release needs no emulation.
+# The Go version must equal go.mod's toolchain line (CI checks), so the image
+# ships the Go that govulncheck scanned. GOTOOLCHAIN=local stops a silent
+# toolchain download if go.mod ever asks for a newer Go than this image has.
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+# modules are platform-independent, so this layer is shared by all six targets;
+# the ARGs below must stay after it, since declared build args key every later RUN
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 # the release workflow passes the tag's version; the build context has no
 # git history to read it from
 ARG VERSION=0.0.0-src
-ADD . /src
-WORKDIR /src
-ENV CGO_ENABLED 0
-RUN go build \
+ARG TARGETOS TARGETARCH TARGETVARIANT
+# Go rejects a non-empty GOARM it doesn't know even off arm, so only arm gets one
+# the build cache stays in a cache mount, out of the layer the GHA cache exports
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  if [ "$TARGETARCH" = arm ]; then export GOARM=${TARGETVARIANT#v}; fi; \
+  GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \
   -o /tmp/bin
+# CA roots from a floating tag on purpose: the pinned Go image stops being
+# rebuilt once its patch release is superseded, which would freeze the bundle
+FROM --platform=$BUILDPLATFORM alpine:3 AS certs
 # run stage
 FROM scratch
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 WORKDIR /app
 COPY --from=build /tmp/bin /app/bin
 ENTRYPOINT ["/app/bin"]

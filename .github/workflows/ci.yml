@@ -9,6 +9,9 @@ on:
 # least privilege by default; release jobs ask for what they need
 permissions:
   contents: read
+env:
+  # the PR build check and the release must build the same set
+  DOCKER_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/386,linux/arm/v7,linux/arm/v6
 jobs:
   # ================
   # BUILD AND TEST JOB
@@ -32,6 +35,17 @@ jobs:
           fi
       - name: Vet
         run: go vet ./...
+      - name: Docker image Go matches go.mod
+        run: |
+          want=$(go mod edit -json | jq -r '.Toolchain // ("go" + .Go)')
+          want=${want#go}
+          got=$(sed -n 's/^FROM .*golang:\([^-@ ]*\).* AS build$/\1/p' .github/Dockerfile)
+          if [ -z "$got" ]; then
+            echo "::error file=.github/Dockerfile::no 'FROM ... golang:<version>... AS build' line found"; exit 1
+          fi
+          if [ "$got" != "$want" ]; then
+            echo "::error file=.github/Dockerfile::the build stage uses Go '${got}' but go.mod's toolchain is ${want}"; exit 1
+          fi
       - name: Shellcheck
         run: shellcheck scripts/*.sh
       - name: Updater tests
@@ -131,6 +145,33 @@ jobs:
           GITHUB_USER: ${{ github.repository_owner }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   # ================
+  # DOCKER BUILD CHECK (PRs and master pushes, nothing pushed)
+  # ================
+  # a broken Dockerfile would otherwise only show up when a tag is released.
+  # PR branches also get push events; building on both would double the heaviest job.
+  # Only master writes the GHA cache: tag and PR runs can read the default branch's
+  # cache but not each other's, and PR code never gets to seed a release build.
+  docker_build:
+    name: Docker build
+    needs: test
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          # a path context, not the action's default Git context, so .dockerignore applies
+          context: .
+          file: .github/Dockerfile
+          platforms: ${{ env.DOCKER_PLATFORMS }}
+          push: false
+          cache-from: type=gha
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max' || '' }}
+  # ================
   # RELEASE DOCKER IMAGES (on push "v*" tag)
   # ================
   release_docker:
@@ -144,8 +185,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v7
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Login to GitHub Container Registry
@@ -166,11 +205,11 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
+          context: .
           file: .github/Dockerfile
           build-args: VERSION=${{ steps.meta.outputs.version }}
-          platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/386,linux/arm/v7,linux/arm/v6
+          platforms: ${{ env.DOCKER_PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max

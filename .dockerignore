@@ -1,0 +1,19 @@
+# allowlist: only what `go build .` needs, so local state and secrets
+# (config, share.key, certs, downloads) can't reach a local build context.
+# A new top-level package directory must be added here; the Docker build job fails until it is.
+*
+!go.mod
+!go.sum
+!*.go
+!engine/
+!server/
+!static/
+# the allowed directories come back whole, so state that could be written
+# inside them (share.key and certs sit next to the config) is excluded again
+**/share.key
+**/certs
+**/downloads
+**/cloud-fetch.json
+**/cloud-torrent.json
+**/.DS_Store
+**/tmp
