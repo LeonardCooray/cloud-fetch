@@ -16,10 +16,10 @@ SERVICE=${SERVICE:-cloud-fetch}
 REPO=${REPO:-LeonardCooray/cloud-fetch}
 # how long the restarted service must stay up before the update counts
 SETTLE=${SETTLE:-10}
-# how long /healthz may keep answering "unavailable" after that
+# how long /healthz may keep answering "unavailable" after that, in seconds
 HEALTH_WAIT=${HEALTH_WAIT:-30}
-# HEALTH_URL unset works the URL out from the service's ExecStart, and
-# HEALTH_URL= (empty) skips the /healthz check
+# HEALTH_URL unset works the URL out from the running service's arguments
+# and environment, and HEALTH_URL= (empty) skips the /healthz check
 
 die() { echo "update: $*" >&2; exit 1; }
 say() { echo "update: $*"; }
@@ -54,17 +54,20 @@ release_arch() {
 	esac
 }
 
-# Sets health_url, and health_resolve for --domain (so curl reaches this
-# machine under the certificate's name without asking DNS), from the running
+# Sets health_url; for --domain also health_resolve (so curl reaches this
+# machine under the certificate's name without asking DNS), and
+# health_pending=1 while Let's Encrypt hasn't issued the certificate yet.
+# All from the running
 # process's arguments and environment as systemd expanded them. Fails when
 # it can't read them, or the process isn't $BIN (a wrapper that didn't exec).
 health_target() {
-	health_url="" health_resolve=""
+	health_url="" health_resolve="" health_pending=""
 	if [ -n "${HEALTH_URL+set}" ]; then
 		health_url=$HEALTH_URL
 		return 0
 	fi
 	local pid name val port=3000 host="" domain="" scheme=http addr
+	local cache="" config=cloud-fetch.json
 	local -a args env
 	pid=$(systemctl show -p MainPID --value "$SERVICE")
 	if [ "${pid:-0}" = 0 ] || [ ! -r "/proc/$pid/cmdline" ]; then
@@ -96,6 +99,8 @@ health_target() {
 			host | h) host=$val ;;
 			domain) domain=$val ;;
 			cert-path | key-path | k) scheme=https ;;
+			cert-cache) cache=$val ;;
+			config-path | c) config=$val ;;
 			esac
 			;;
 		esac
@@ -120,6 +125,13 @@ health_target() {
 	case $domain in *[!A-Za-z0-9.-]*) return 1 ;; esac
 	health_url="https://$domain:$port/healthz"
 	health_resolve="$domain:$port:$addr"
+	# where autocert keeps it: --cert-cache, else certs/ next to the config,
+	# relative to the server's working directory
+	[ -n "$cache" ] || cache=$(dirname "$config")/certs
+	case $cache in /*) ;; *) cache=/proc/$pid/cwd/$cache ;; esac
+	if [ ! -e "$cache/$domain" ] && [ ! -e "$cache/$domain+rsa" ]; then
+		health_pending=1
+	fi
 }
 
 # still_up NRESTARTS: the service is active and systemd hasn't restarted it
@@ -130,10 +142,10 @@ still_up() {
 		[ "$(systemctl show -p NRestarts --value "$SERVICE")" = "$1" ]
 }
 
-# health_result HTTP_CODE CURL_EXIT BODY DOMAIN_MODE prints what one try
+# health_result HTTP_CODE CURL_EXIT BODY CERT_PENDING prints what one try
 # means: ok, unhealthy (it says so), old (a release before /healthz, which
-# answers 401 or 404), refused (nothing listening), waiting (with --domain,
-# the first Let's Encrypt certificate may still be being issued) or broken.
+# answers 401 or 404), refused (nothing listening), waiting (the first Let's
+# Encrypt certificate may still be being issued) or broken.
 health_result() {
 	case $2 in
 	0) ;;
@@ -151,10 +163,10 @@ health_result() {
 
 # check_health NRESTARTS fails when /healthz isn't ok within HEALTH_WAIT
 # seconds, except that a release from before /healthz, or a --domain server
-# still waiting on its certificate, leaves it to the systemd checks. It stops
+# with no certificate yet that doesn't answer, leaves it to the systemd checks. It stops
 # waiting if the service goes down, which they catch.
 check_health() {
-	local health_url health_resolve resp rc result deadline
+	local health_url health_resolve health_pending resp rc result deadline
 	if ! health_target; then
 		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
 		return 0
@@ -165,7 +177,7 @@ check_health() {
 		# -k: it's this machine, and a staging certificate is fine
 		rc=0
 		resp=$(curl -ks --noproxy '*' --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || rc=$?
-		result=$(health_result "${resp: -3}" "$rc" "${resp%???}" "$([ -n "$health_resolve" ] && echo 1)")
+		result=$(health_result "${resp: -3}" "$rc" "${resp%???}" "$health_pending")
 		case $result in
 		ok)
 			say "$health_url says ok"
@@ -222,6 +234,8 @@ rollback() {
 
 main() {
 	local mode=update want="" force=0
+	# checked now: bash arithmetic on it later would end the script mid-update
+	case $HEALTH_WAIT in '' | *[!0-9]*) die "HEALTH_WAIT must be a whole number of seconds, not '$HEALTH_WAIT'" ;; esac
 	while [ $# -gt 0 ]; do
 		case $1 in
 		--check) mode=check ;;

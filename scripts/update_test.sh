@@ -35,7 +35,8 @@ check "empty reply with --domain" "$(health_result 000 52 '' 1)" broken
 # (its own "-c CODE" parses as one flag and its value). fake_pid, not pid,
 # since health_target's own local pid would hide it from systemctl.
 SERVICE=cloud-fetch
-BIN=$(readlink -f "$(command -v python3)")
+python=$(readlink -f "$(command -v python3)")
+BIN=$python
 fake_pid=0
 systemctl() {
 	case $3 in
@@ -50,9 +51,10 @@ target() {
 	# shellcheck disable=SC2086 # vars is a list of NAME=value words
 	env $vars python3 -c 'import time; time.sleep(30)' "$@" >/dev/null 2>&1 &
 	fake_pid=$!
-	while ! grep -q import "/proc/$fake_pid/cmdline" 2>/dev/null; do sleep 0.05; done
+	# env execs python3; until then /proc shows env
+	while [ "$(readlink -f "/proc/$fake_pid/exe")" != "$python" ]; do sleep 0.05; done
 	if health_target; then
-		echo "$health_url${health_resolve:+ $health_resolve}"
+		echo "$health_url${health_resolve:+ $health_resolve}${health_pending:+ pending}"
 	else
 		echo "can't tell"
 	fi
@@ -63,9 +65,16 @@ check "-p=, single-dash long flag" "$(target '' -p=3301 -auth=a:b)" "http://127.
 check "default port" "$(target '' --log)" "http://127.0.0.1:3000/healthz"
 check "PORT from the environment" "$(target PORT=3200)" "http://127.0.0.1:3200/healthz"
 check "a flag overrides PORT" "$(target PORT=3200 --port 3201)" "http://127.0.0.1:3201/healthz"
-check "--domain" "$(target '' --domain f.example --port 443)" "https://f.example:443/healthz f.example:443:127.0.0.1"
-check "DOMAIN from the environment" "$(target 'DOMAIN=e.example PORT=443')" "https://e.example:443/healthz e.example:443:127.0.0.1"
-check "--domain with --host localhost" "$(target '' --domain f.example --host localhost --port 443)" "https://f.example:443/healthz f.example:443:127.0.0.1"
+check "--domain" "$(target '' --domain f.example --port 443)" "https://f.example:443/healthz f.example:443:127.0.0.1 pending"
+check "DOMAIN from the environment" "$(target 'DOMAIN=e.example PORT=443')" "https://e.example:443/healthz e.example:443:127.0.0.1 pending"
+check "--domain with --host localhost" "$(target '' --domain f.example --host localhost --port 443)" "https://f.example:443/healthz f.example:443:127.0.0.1 pending"
+# a certificate already in autocert's cache means nothing is pending
+certs=$(mktemp -d)
+mkdir -p "$certs/conf/certs" "$certs/own"
+touch "$certs/conf/certs/f.example" "$certs/own/f.example+rsa"
+check "cached certificate next to the config" "$(cd "$certs" && target '' --domain f.example --config-path conf/cloud-fetch.json)" "https://f.example:3000/healthz f.example:3000:127.0.0.1"
+check "cached certificate in --cert-cache" "$(target '' --domain f.example --cert-cache "$certs/own")" "https://f.example:3000/healthz f.example:3000:127.0.0.1"
+check "a certificate for another domain" "$(target '' --domain g.example --cert-cache "$certs/own")" "https://g.example:3000/healthz g.example:3000:127.0.0.1 pending"
 check "--host address" "$(target '' --host=10.0.0.5)" "http://10.0.0.5:3000/healthz"
 check "--host IPv6" "$(target '' -h ::1 -p 3000)" "http://[::1]:3000/healthz"
 check "--host all IPv6" "$(target '' --host '[::]')" "http://127.0.0.1:3000/healthz"
@@ -97,6 +106,10 @@ check "check_health: unavailable" "$(health $'unavailable\n503' 0)" fail
 check "check_health: nothing listening" "$(health 000 7)" fail
 check "check_health: no answer" "$(health 000 28)" fail
 check "check_health: HEALTH_URL= skips" "$(HEALTH_URL='' health 000 7)" pass
+
+rm -rf "$certs"
+
+check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_WAIT=30s main 2>&1)" "update: HEALTH_WAIT must be a whole number of seconds, not '30s'"
 
 if [ "$fails" != 0 ]; then
 	echo "$fails failed"

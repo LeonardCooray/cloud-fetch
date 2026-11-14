@@ -311,17 +311,11 @@ func (s *Server) handler() http.Handler {
 		log.Printf("Enabled HTTP authentication")
 	}
 	// share links carry their own signature, so they skip the login, and
-	// gzip for the same reason /download/ does. /healthz skips the login so
-	// monitors need no password, and checks no credentials, so it can't be
-	// used to guess one past the throttle.
+	// gzip for the same reason /download/ does
 	authed := h
 	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/share/") {
 			s.serveShare(w, r)
-			return
-		}
-		if r.URL.Path == "/healthz" {
-			s.serveHealth(w, r)
 			return
 		}
 		authed.ServeHTTP(w, r)
@@ -329,7 +323,17 @@ func (s *Server) handler() http.Handler {
 	if s.Log {
 		h = requestlog.Wrap(h)
 	}
-	return h
+	// /healthz skips the login so monitors need no password, and checks no
+	// credentials, so it can't be used to guess one past the throttle. It
+	// skips the request log too, which monitors would flood.
+	logged := h
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			s.serveHealth(w, r)
+			return
+		}
+		logged.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) reconfigure(c engine.Config) error {
