@@ -9,8 +9,11 @@ FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS build
 ARG VERSION=0.0.0-src
 ARG TARGETOS TARGETARCH TARGETVARIANT
 WORKDIR /src
-COPY . .
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+# modules are platform-independent, so this layer is shared by all six targets
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} go build \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \

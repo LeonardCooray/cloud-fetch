@@ -1,12 +1,10 @@
-# local state and secrets must never reach the build context
-.git
-downloads
-cloud-fetch.json
-cloud-torrent.json
-share.key
-certs/
-tmp/
-dev.sh
-dist/
-e2e/
-.DS_Store
+# allowlist: only what `go build .` needs, so local state and secrets
+# (config, share.key, certs, downloads) can't reach a local build context.
+# A new top-level package must be added here; the Docker build job fails until it is.
+*
+!go.mod
+!go.sum
+!main.go
+!engine/
+!server/
+!static/
