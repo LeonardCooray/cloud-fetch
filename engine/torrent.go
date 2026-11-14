@@ -18,7 +18,8 @@ type Torrent struct {
 	Started     bool
 	SpacePaused bool // downloading held for low disk space; still Started
 	// waiting for a download slot (MaxActiveTorrents); still Started.
-	// QueuePosition is 1 for the next to start, 0 when not queued.
+	// QueuePosition is how many freed slots it needs to start (an earlier
+	// Start now extra takes one first), 0 when not queued.
 	Queued        bool
 	QueuePosition int
 	Dropped       bool

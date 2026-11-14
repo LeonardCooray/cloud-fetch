@@ -27,6 +27,10 @@ test("torrents over the limit wait in line, and Start now starts one as an extra
   await expect(b.locator(".badge")).toHaveText("Downloading");
   await expect(b.getByRole("button", { name: "Start now" })).toHaveCount(0);
   await expect(a.locator(".badge")).toHaveText("Downloading");
+  // b, started earlier, takes the next freed slot before c
+  await expect(c.locator(".status")).toHaveText("0 B of 65.5 KB · 0% · 2nd in line");
+  await a.getByRole("button", { name: "Pause" }).click();
+  await expect(b.locator(".badge")).toHaveText("Downloading");
   await expect(c.locator(".status")).toHaveText("0 B of 65.5 KB · 0% · 1st in line");
 });
 

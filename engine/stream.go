@@ -25,7 +25,8 @@ const streamReadahead = 8 << 20
 // disk. Reads block until their pieces arrive and pass the hash check (no
 // SetResponsive: a download manager may save these bytes), and the pieces
 // just ahead of the read position are fetched first, even in a deselected
-// file. A queued torrent is started over the active limit (see StartNow).
+// file. A queued torrent is started over the active limit (see StartNow)
+// unless space is low.
 // ctx ends any blocked read, so it should be the request's context.
 func (e *Engine) StreamFile(ctx context.Context, path string) (r io.ReadSeekCloser, ok bool, err error) {
 	e.mut.Lock()
@@ -44,9 +45,11 @@ func (e *Engine) StreamFile(ctx context.Context, path string) (r io.ReadSeekClos
 			if !t.Started {
 				return nil, false, ErrStreamPaused
 			}
-			if t.Queued {
+			if t.Queued && !e.lowDisk {
 				// someone wants to watch it now: start it over the active
-				// limit rather than make the player wait for a slot
+				// limit rather than make the player wait for a slot. While
+				// space is low it couldn't download anyway, and StartNow
+				// refuses then too.
 				e.forceLocked(t)
 			}
 			tr := f.NewReader()

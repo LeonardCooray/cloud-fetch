@@ -535,7 +535,9 @@ func (e *Engine) queueLocked() {
 		}
 		return waiting[i].InfoHash < waiting[j].InfoHash
 	})
-	limit, slots, pos := e.config.MaxActiveTorrents, 0, 0
+	// ahead counts what takes a freed slot before the next queued torrent:
+	// those queued earlier, and extras started earlier
+	limit, slots, ahead := e.config.MaxActiveTorrents, 0, 0
 	for _, t := range waiting {
 		t.Queued, t.QueuePosition = false, 0
 		switch {
@@ -543,9 +545,10 @@ func (e *Engine) queueLocked() {
 			slots++
 			e.unforceLocked(t)
 		case t.forced:
+			ahead++
 		default:
-			pos++
-			t.Queued, t.QueuePosition = true, pos
+			ahead++
+			t.Queued, t.QueuePosition = true, ahead
 		}
 		t.syncDownload()
 	}

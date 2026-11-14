@@ -320,6 +320,38 @@ func TestStartNowRunsOverTheLimitUntilASlotReachesIt(t *testing.T) {
 	}
 }
 
+// An extra started earlier than a queued torrent takes the next freed slot
+// first, so the queued one's place in line counts it.
+func TestQueuePositionCountsAnEarlierExtra(t *testing.T) {
+	e := queueing(t, t.TempDir(), 1)
+	a, b, c := addIdle(t, e, "a"), addIdle(t, e, "b"), addIdle(t, e, "c")
+	if err := e.StartNow(b); err != nil {
+		t.Fatal(err)
+	}
+	wantQueued(t, e, "c", c, 2)
+	if err := e.StopTorrent(a); err != nil {
+		t.Fatal(err)
+	}
+	wantRunning(t, e, "b", b)
+	wantQueued(t, e, "c", c, 1)
+}
+
+func TestStreamingAQueuedTorrentWhileSpaceIsLowLeavesItQueued(t *testing.T) {
+	leech := startEngineWith(t, Config{DownloadDirectory: t.TempDir(), AutoStart: true, MaxActiveTorrents: 1, MinimumFreeSpaceGB: 5})
+	addIdle(t, leech, "first")
+	mi := multiFileTorrent(t, t.TempDir())
+	if err := leech.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+		t.Fatal(err)
+	}
+	ih := mi.HashInfoBytes().HexString()
+	leech.FreeSpace(4 * gb)
+	if r, ok, err := leech.StreamFile(context.Background(), "pack/a.bin"); err == nil && ok {
+		r.Close()
+	}
+	leech.FreeSpace(100 * gb)
+	wantQueued(t, leech, "streamed while low", ih, 1)
+}
+
 // Pausing an extra ends it: resumed, it queues like anything else.
 func TestPausingAStartedNowTorrentEndsTheOverride(t *testing.T) {
 	e := queueing(t, t.TempDir(), 1)

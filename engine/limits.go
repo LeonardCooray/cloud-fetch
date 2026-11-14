@@ -26,6 +26,8 @@ const maxPeerRequest = 1 << 20
 // pointers it was given and has no way to swap them on a running client.
 // Both always exist: a nil download limiter could never be turned on later.
 type limiters struct {
+	// rate.Limiter is safe for concurrent use, but a limit and burst from
+	// two Configure calls at once mustn't mix
 	mu       sync.Mutex
 	down, up *rate.Limiter
 }
@@ -51,9 +53,6 @@ func (l *limiters) apply(rl *rate.Limiter, kbps, floor int) {
 	if kbps > 0 {
 		b := kbps * 1000
 		limit, burst = rate.Limit(b), max(b, floor)
-	}
-	if rl.Limit() == limit && rl.Burst() == burst {
-		return
 	}
 	rl.SetBurst(burst)
 	rl.SetLimit(limit)
