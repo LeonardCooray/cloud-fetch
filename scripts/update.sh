@@ -86,9 +86,9 @@ health_target() {
 			name=${1#-} name=${name#-} val=""
 			case $name in
 			*=*) val=${name#*=} name=${name%%=*} ;;
-			# the boolean flags; every other flag takes the next argument
-			log | l | open | o | acme-staging | help | version | v) ;;
-			*) val=${2-} && shift ;;
+			# a boolean flag (--log) is followed by another flag or nothing,
+			# since cloud-fetch takes no other arguments
+			*) case ${2--} in -*) ;; *) val=$2 && shift ;; esac ;;
 			esac
 			case $name in
 			port | p) port=$val ;;
@@ -114,7 +114,10 @@ health_target() {
 	# --resolve takes an address, not a name
 	case $addr in
 	\[*) ;;
-	*[!0-9.]*) addr=$(getent ahostsv4 "$addr" | awk 'NR == 1 { print $1 }') || true ;;
+	*[!0-9.]*)
+		addr=$(getent ahosts "$addr" | awk 'NR == 1 { print $1 }') || true
+		case $addr in *:*) addr="[$addr]" ;; esac
+		;;
 	esac
 	[ -n "$addr" ] || return 1
 	health_url="https://$domain:$port/healthz"
@@ -129,13 +132,14 @@ still_up() {
 		[ "$(systemctl show -p NRestarts --value "$SERVICE")" = "$1" ]
 }
 
-# check_health NRESTARTS fails only when /healthz keeps answering
-# "unavailable" for HEALTH_WAIT seconds. Releases before it answer 401 or 404,
-# and no answer at all may be a first Let's Encrypt certificate still being
-# issued, so those leave it to the systemd checks. It stops waiting if the
-# service goes down, which they catch.
+# check_health NRESTARTS fails when, for HEALTH_WAIT seconds, /healthz keeps
+# answering "unavailable" or nothing accepts the connection. With --domain a
+# connection that stalls may be the first Let's Encrypt certificate still
+# being issued, so only then is no answer let through. Releases before
+# /healthz answer 401 or 404, which leaves it to the systemd checks. It stops
+# waiting if the service goes down, which they catch.
 check_health() {
-	local health_url health_resolve resp code deadline
+	local health_url health_resolve resp rc code deadline
 	if ! health_target; then
 		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
 		return 0
@@ -144,7 +148,8 @@ check_health() {
 	deadline=$((SECONDS + HEALTH_WAIT))
 	while still_up "$1"; do
 		# -k: it's this machine, and a staging certificate is fine
-		resp=$(curl -ks --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || true
+		rc=0
+		resp=$(curl -ks --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || rc=$?
 		code=${resp: -3} resp=${resp%???}
 		case $code in
 		200)
@@ -155,22 +160,29 @@ check_health() {
 			code=other
 			;;
 		503) ;;
-		# curl's code when nothing answered, e.g. not listening yet
-		000) code=none ;;
-		[0-9][0-9][0-9]) code=other ;;
-		*) code=none ;;
+		[0-9][0-9][0-9] | 000) code=other ;;
 		esac
+		# curl exit 7: nothing listening (yet)
+		if [ "$rc" != 0 ]; then
+			[ "$rc" = 7 ] && code=refused || code=none
+		fi
 		if [ "$code" = other ]; then
 			say "no /healthz at $health_url (likely a release before it), so not checking it"
 			return 0
 		fi
 		if [ "$SECONDS" -ge "$deadline" ]; then
-			if [ "$code" = 503 ]; then
-				say "$health_url still says unavailable after ${HEALTH_WAIT}s"
-				return 1
-			fi
-			say "no answer from $health_url, so not checking /healthz"
-			return 0
+			case $code in
+			503) say "$health_url still says unavailable after ${HEALTH_WAIT}s" ;;
+			refused) say "nothing accepts connections at $health_url after ${HEALTH_WAIT}s (set HEALTH_URL if that's the wrong address)" ;;
+			*)
+				if [ -n "$health_resolve" ]; then
+					say "no answer from $health_url, which may be a certificate still being issued, so not checking /healthz"
+					return 0
+				fi
+				say "no answer from $health_url after ${HEALTH_WAIT}s (set HEALTH_URL if that's the wrong address)"
+				;;
+			esac
+			return 1
 		fi
 		sleep 2
 	done

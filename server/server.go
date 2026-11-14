@@ -58,9 +58,10 @@ type Server struct {
 	//share links; the key is loaded on first use
 	shareMu     sync.Mutex
 	shareSecret []byte
-	//last /healthz result, so only changes are logged
+	//last /healthz result; see health
 	healthMu  sync.Mutex
-	unhealthy bool
+	healthAt  time.Time
+	healthErr error
 	//torrent engine
 	engine *engine.Engine
 	state  struct {

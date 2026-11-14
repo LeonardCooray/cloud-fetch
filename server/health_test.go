@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/LeonardCooray/cloud-fetch/engine"
 )
@@ -66,6 +67,24 @@ func TestHealthzIsUnavailableWithoutATorrentClient(t *testing.T) {
 	s.engine.Close()
 	if w := healthz(t, s.handler(), "GET", nil); w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("after the client closed: status %d, want 503", w.Code)
+	}
+}
+
+// Callers need no login, so they mustn't be able to make the engine take
+// its locks more than once per healthCacheFor.
+func TestHealthzReusesAResultForASecond(t *testing.T) {
+	s := healthy(t, "leo:pw")
+	h := s.handler()
+	if w := healthz(t, h, "GET", nil); w.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200", w.Code)
+	}
+	s.engine.Close()
+	if w := healthz(t, h, "GET", nil); w.Code != http.StatusOK {
+		t.Fatalf("straight after: status %d, want the cached 200", w.Code)
+	}
+	time.Sleep(healthCacheFor + 100*time.Millisecond)
+	if w := healthz(t, h, "GET", nil); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("after %s: status %d, want 503", healthCacheFor, w.Code)
 	}
 }
 
