@@ -60,6 +60,21 @@ func (p *healthProbe) stale() bool {
 	}
 }
 
+// forgetCheck drops a finished check's result, so the next one sees a client
+// that just closed. A running one stays to be shared; it's waiting on e.mut
+// and will see the closed client itself.
+func (e *Engine) forgetCheck() {
+	e.probeMu.Lock()
+	defer e.probeMu.Unlock()
+	if e.probe != nil {
+		select {
+		case <-e.probe.done:
+			e.probe = nil
+		default:
+		}
+	}
+}
+
 func (p *healthProbe) run(e *Engine) {
 	p.err = e.probeClient()
 	p.at = time.Now()

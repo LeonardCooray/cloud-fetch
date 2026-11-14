@@ -64,6 +64,18 @@ func TestCheckTimesOutOnAWedgedEngineWithOneProbe(t *testing.T) {
 	}
 }
 
+// A result isn't reused past a close: the client it vouched for is gone.
+func TestCheckIsFreshAfterClose(t *testing.T) {
+	e := startEngine(t, t.TempDir())
+	if err := e.Check(time.Second); err != nil {
+		t.Fatalf("Check on a running engine: %v", err)
+	}
+	e.Close()
+	if err := e.Check(time.Second); !errors.Is(err, errNotRunning) {
+		t.Fatalf("Check straight after Close: %v, want %v", err, errNotRunning)
+	}
+}
+
 // The health check needs no login, so a result is reused rather than taking
 // the engine's locks for every caller.
 func TestCheckReusesAResultForASecond(t *testing.T) {

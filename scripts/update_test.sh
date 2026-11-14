@@ -131,7 +131,8 @@ check "check_health: timeout, certificate cached" "$(health 000 28)" fail
 rm -rf "$certs"
 
 check "HEALTH_WAIT that isn't a number stops before anything changes" "$(HEALTH_WAIT=30s main --rollback 2>&1)" "update: HEALTH_WAIT must be a whole number of seconds, not '30s'"
-# id -u comes straight after the HEALTH_WAIT check; a fake one reports the
+check "SETTLE that isn't a number stops before anything changes" "$(SETTLE=ten main --rollback 2>&1)" "update: SETTLE must be a whole number of seconds, not 'ten'"
+# id -u comes straight after these checks; a fake one reports the
 # value main went on with, then stops it as not root
 check "HEALTH_WAIT with a leading zero is read as decimal" "$(id() { echo "wait=$HEALTH_WAIT" >&2; echo 1000; }; HEALTH_WAIT=08 main --rollback 2>&1 | head -n 1)" "wait=8"
 

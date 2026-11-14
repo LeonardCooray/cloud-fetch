@@ -128,6 +128,7 @@ func (e *Engine) closeClientLocked() {
 	e.client.Close()
 	e.client = nil
 	e.ts = map[string]*Torrent{}
+	e.forgetCheck()
 }
 
 // clientConfig also sets l to c's speed limits, since the client shares them.

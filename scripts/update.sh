@@ -264,8 +264,10 @@ main() {
 		exit 0
 	fi
 
-	# checked now: bash arithmetic on it later would end the script mid-update
+	# checked now: bash arithmetic on HEALTH_WAIT later would end the script
+	# mid-update, and a SETTLE sleep can't take would skip the settle time
 	case $HEALTH_WAIT in '' | *[!0-9]*) die "HEALTH_WAIT must be a whole number of seconds, not '$HEALTH_WAIT'" ;; esac
+	case $SETTLE in '' | *[!0-9]*) die "SETTLE must be a whole number of seconds, not '$SETTLE'" ;; esac
 	# base 10, or a leading zero (08) would be read as octal
 	HEALTH_WAIT=$((10#$HEALTH_WAIT))
 
