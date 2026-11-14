@@ -1,7 +1,8 @@
 version: 2
 # One grouped PR per ecosystem each Monday instead of one per dependency.
 # Cooldown skips releases younger than 5 days (a yanked or hijacked release usually surfaces by then).
-# Dependabot never bumps the go/toolchain lines, so stdlib fixes come from govulncheck in ci.yml.
+# Dependabot doesn't move Go itself to a patched release (go get only raises the go line when a
+# dependency needs it), so stdlib fixes are a hand bump of go.mod's toolchain, flagged by govulncheck in ci.yml.
 updates:
   - package-ecosystem: gomod
     directory: /
@@ -11,6 +12,9 @@ updates:
     cooldown:
       default-days: 5
     groups:
+      # anacrolix has needed workarounds before; a breaking release shouldn't hold up the rest
+      anacrolix:
+        patterns: ["github.com/anacrolix/*"]
       go:
         patterns: ["*"]
     commit-message:

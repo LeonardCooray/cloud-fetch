@@ -3,9 +3,9 @@ on:
   pull_request: {}
   push: {}
   # a new advisory can land against unchanged code; only govulncheck runs on the schedule
+  # no workflow_dispatch: the release jobs gate on the ref alone, so a manual run on a tag would republish it
   schedule:
     - cron: "41 3 * * 1" # Mondays 03:41 UTC
-  workflow_dispatch: {}
 # least privilege by default; release jobs ask for what they need
 permissions:
   contents: read
@@ -59,7 +59,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # fails on vulnerabilities the code can reach; stdlib ones are judged against go.mod's toolchain
+          cache: false # same key as Build & Test; finishing first, it would save a cache without the -race builds
+      # fails on vulnerabilities the code can reach; stdlib ones are judged against the Go that builds releases.
+      # setup-go sets GOTOOLCHAIN=local, so a pin needing a newer Go than go.mod's fails here until go.mod catches up.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
   # ================
