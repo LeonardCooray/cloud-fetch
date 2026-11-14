@@ -1,6 +1,6 @@
 module github.com/LeonardCooray/cloud-fetch
 
-go 1.26.0
+go 1.26.8
 
 toolchain go1.27.4
 
@@ -8,16 +8,16 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/anacrolix/torrent v1.62.0
 	github.com/jpillora/archive v0.0.0-20160301031048-e0b3681851f1
-	github.com/jpillora/backoff v1.0.0
+	github.com/jpillora/backoff v1.1.0
 	github.com/jpillora/cookieauth v1.1.1
-	github.com/jpillora/opts v1.2.3
+	github.com/jpillora/opts v1.9.0
 	github.com/jpillora/requestlog v1.0.0
 	github.com/jpillora/scraper v0.3.0
-	github.com/jpillora/velox v0.4.2
-	github.com/shirou/gopsutil/v4 v4.26.8
+	github.com/jpillora/velox v0.12.1
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	golang.org/x/crypto v0.59.0
-	golang.org/x/time v0.14.0
+	golang.org/x/time v0.16.0
 )
 
 require (
@@ -51,10 +51,9 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.2 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/elithrar/simple-scrypt v1.3.0 // indirect
-	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/floatdrop/lru v1.3.0 // indirect
 	github.com/go-llsqlite/adapter v0.2.0 // indirect
 	github.com/go-llsqlite/crawshaw v0.6.0 // indirect
@@ -69,7 +68,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/jpillora/ansi v1.0.3 // indirect
-	github.com/jpillora/eventsource v1.1.0 // indirect
+	github.com/jpillora/eventsource v1.2.0 // indirect
 	github.com/jpillora/sizestr v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
@@ -100,14 +99,14 @@ require (
 	github.com/pion/webrtc/v4 v4.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/posener/complete v1.2.3 // indirect
-	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/protolambda/ctxlock v0.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
-	github.com/tklauser/go-sysconf v0.3.16 // indirect
-	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/tklauser/go-sysconf v0.4.0 // indirect
+	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/tomasen/realip v0.0.0-20180522021738-f0c99a92ddce // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
