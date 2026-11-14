@@ -57,7 +57,7 @@ release_arch() {
 # Sets health_url, and health_resolve for --domain (so curl reaches this
 # machine under the certificate's name without asking DNS), from the running
 # process's arguments and environment as systemd expanded them. Fails when
-# it can't read them.
+# it can't read them, or the process isn't $BIN (a wrapper that didn't exec).
 health_target() {
 	health_url="" health_resolve=""
 	if [ -n "${HEALTH_URL+set}" ]; then
@@ -70,6 +70,7 @@ health_target() {
 	if [ "${pid:-0}" = 0 ] || [ ! -r "/proc/$pid/cmdline" ]; then
 		return 1
 	fi
+	[ "$(readlink -f "/proc/$pid/exe")" = "$(readlink -f "$BIN")" ] || return 1
 	mapfile -d '' args <"/proc/$pid/cmdline" || return 1
 	mapfile -d '' env <"/proc/$pid/environ" || return 1
 	# opts reads these two from the environment, and flags override them
@@ -104,23 +105,19 @@ health_target() {
 	case $host in
 	'' | 0.0.0.0 | :: | '[::]') addr=127.0.0.1 ;;
 	*:*) addr="[${host#[}" addr="${addr%]}]" ;;
+	*[!0-9.]*)
+		# a name: Go listens on its first IPv4 address if it has one
+		addr=$( (getent ahostsv4 "$host" || getent ahosts "$host") | awk 'NR == 1 { print $1 }') || true
+		case $addr in *:*) addr="[$addr]" ;; esac
+		;;
 	*) addr=$host ;;
 	esac
+	[ -n "$addr" ] || return 1
 	if [ -z "$domain" ]; then
 		health_url="$scheme://$addr:$port/healthz"
 		return 0
 	fi
 	case $domain in *[!A-Za-z0-9.-]*) return 1 ;; esac
-	# --resolve takes an address, not a name
-	case $addr in
-	\[*) ;;
-	*[!0-9.]*)
-		# Go listens on a name's first IPv4 address if it has one
-		addr=$( (getent ahostsv4 "$addr" || getent ahosts "$addr") | awk 'NR == 1 { print $1 }') || true
-		case $addr in *:*) addr="[$addr]" ;; esac
-		;;
-	esac
-	[ -n "$addr" ] || return 1
 	health_url="https://$domain:$port/healthz"
 	health_resolve="$domain:$port:$addr"
 }
@@ -133,14 +130,31 @@ still_up() {
 		[ "$(systemctl show -p NRestarts --value "$SERVICE")" = "$1" ]
 }
 
-# check_health NRESTARTS fails when, for HEALTH_WAIT seconds, /healthz keeps
-# answering "unavailable" or nothing accepts the connection. With --domain a
-# connection that stalls may be the first Let's Encrypt certificate still
-# being issued, so only then is no answer let through. Releases before
-# /healthz answer 401 or 404, which leaves it to the systemd checks. It stops
+# health_result HTTP_CODE CURL_EXIT BODY DOMAIN_MODE prints what one try
+# means: ok, unhealthy (it says so), old (a release before /healthz, which
+# answers 401 or 404), refused (nothing listening), waiting (with --domain,
+# the first Let's Encrypt certificate may still be being issued) or broken.
+health_result() {
+	case $2 in
+	0) ;;
+	7) echo refused && return ;;
+	# 28 timed out, 35 TLS handshake failed
+	28 | 35) [ "$4" = 1 ] && echo waiting || echo broken && return ;;
+	*) echo broken && return ;;
+	esac
+	case $1 in
+	200) [ "${3%$'\n'}" = ok ] && echo ok || echo old ;;
+	5[0-9][0-9]) echo unhealthy ;;
+	*) echo old ;;
+	esac
+}
+
+# check_health NRESTARTS fails when /healthz isn't ok within HEALTH_WAIT
+# seconds, except that a release from before /healthz, or a --domain server
+# still waiting on its certificate, leaves it to the systemd checks. It stops
 # waiting if the service goes down, which they catch.
 check_health() {
-	local health_url health_resolve resp rc code deadline
+	local health_url health_resolve resp rc result deadline
 	if ! health_target; then
 		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
 		return 0
@@ -151,37 +165,26 @@ check_health() {
 		# -k: it's this machine, and a staging certificate is fine
 		rc=0
 		resp=$(curl -ks --noproxy '*' --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || rc=$?
-		code=${resp: -3} resp=${resp%???}
-		case $code in
-		200)
-			if [ "${resp%$'\n'}" = ok ]; then
-				say "$health_url says ok"
-				return 0
-			fi
-			code=other
+		result=$(health_result "${resp: -3}" "$rc" "${resp%???}" "$([ -n "$health_resolve" ] && echo 1)")
+		case $result in
+		ok)
+			say "$health_url says ok"
+			return 0
 			;;
-		503) ;;
-		[0-9][0-9][0-9]) code=other ;;
-		esac
-		# curl exit 7: nothing listening (yet)
-		if [ "$rc" != 0 ]; then
-			[ "$rc" = 7 ] && code=refused || code=none
-		fi
-		if [ "$code" = other ]; then
+		old)
 			say "no /healthz at $health_url (likely a release before it), so not checking it"
 			return 0
-		fi
+			;;
+		esac
 		if [ "$SECONDS" -ge "$deadline" ]; then
-			case $code in
-			503) say "$health_url still says unavailable after ${HEALTH_WAIT}s" ;;
-			refused) say "nothing accepts connections at $health_url after ${HEALTH_WAIT}s (set HEALTH_URL if that's the wrong address)" ;;
-			*)
-				if [ -n "$health_resolve" ]; then
-					say "no answer from $health_url, which may be a certificate still being issued, so not checking /healthz"
-					return 0
-				fi
-				say "no answer from $health_url after ${HEALTH_WAIT}s (set HEALTH_URL if that's the wrong address)"
+			case $result in
+			unhealthy) say "$health_url still says unavailable after ${HEALTH_WAIT}s" ;;
+			waiting)
+				say "no answer from $health_url, which may be a certificate still being issued, so not checking /healthz"
+				return 0
 				;;
+			refused) say "nothing accepts connections at $health_url after ${HEALTH_WAIT}s (set HEALTH_URL if that's the wrong address)" ;;
+			*) say "no working answer from $health_url after ${HEALTH_WAIT}s (curl exit $rc)" ;;
 			esac
 			return 1
 		fi
@@ -302,4 +305,7 @@ main() {
 	die "$SERVICE isn't up and healthy on $want"
 }
 
-main "$@"
+# sourcing it (scripts/update_test.sh) only defines the functions
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+	main "$@"
+fi

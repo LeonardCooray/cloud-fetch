@@ -33,6 +33,11 @@ func (e *Engine) Check(timeout time.Duration) error {
 		go p.run(e)
 	}
 	e.probeMu.Unlock()
+	select {
+	case <-p.done:
+		return p.err
+	default:
+	}
 	t := time.NewTimer(timeout)
 	defer t.Stop()
 	select {
