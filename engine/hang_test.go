@@ -1,9 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
+	"log"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,6 +82,49 @@ func TestReconfiguringDuringVerificationDoesNotFreeze(t *testing.T) {
 		})
 		within(t, 5*time.Second, "GetTorrents after reconfigure", func() { e.GetTorrents() })
 		within(t, 5*time.Second, "closing the client", func() { closeEngine(e) })
+	}
+}
+
+// lockedBuffer collects log output written from other goroutines.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// closeClientLocked doesn't stop verifications, so their next piece check
+// lands on a closed torrent. Before anacrolix v1.62.0 that check kept the
+// client's lock (#1119); the old client must still answer afterwards, and
+// the ended verification isn't logged as a failure.
+func TestClosingDuringVerificationLeavesTheClientUsable(t *testing.T) {
+	logs := &lockedBuffer{}
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	for i := 0; i < 20; i++ {
+		e := startEngine(t, t.TempDir())
+		mi := manyPieces(t)
+		if err := e.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Duration(i) * 250 * time.Microsecond)
+		old := e.client
+		within(t, 5*time.Second, "closing the client", func() { closeEngine(e) })
+		time.Sleep(50 * time.Millisecond) // let a pending piece check reach the closed torrent
+		within(t, 5*time.Second, "the closed client's lock", func() { old.Torrents() })
+	}
+	if strings.Contains(logs.String(), "verify ") {
+		t.Fatalf("a verification ended by the close was logged:\n%s", logs)
 	}
 }
 

@@ -291,11 +291,29 @@ func TestDisableEncryptionForcesPlaintext(t *testing.T) {
 	}
 }
 
-// anacrolix/torrent's connection writer can miss a wake-up and then sits
-// until its keepalive timer, holding back a piece that's ready to send. The
-// default timer is a minute; the transfer tests stalled on it under load.
-func TestKeepAliveTimeoutBoundsAMissedWriterWakeup(t *testing.T) {
-	if got := clientConfig(Config{}).KeepAliveTimeout; got <= 0 || got > 5*time.Second {
-		t.Fatalf("KeepAliveTimeout %s, want at most 5s", got)
+// Before anacrolix v1.62.0 the connection writer could miss a wake-up and
+// hold a ready piece until its keepalive timer, a minute by default (#1070).
+// Without a shorter timer, about 1 in 130 of these transfers took 13s or more
+// under load; a healthy one takes well under a second even under -race.
+func TestTransfersDoNotWaitForTheKeepalive(t *testing.T) {
+	seed, mi := seeder(t)
+	ih := mi.HashInfoBytes().HexString()
+	for i := 0; i < 40; i++ {
+		leech := startEngineWith(t, Config{DownloadDirectory: t.TempDir(), AutoStart: true})
+		if err := leech.NewTorrent(torrent.TorrentSpecFromMetaInfo(mi)); err != nil {
+			t.Fatal(err)
+		}
+		connect(t, leech, seed, ih)
+		start := time.Now()
+		for {
+			if tr, ok := leech.GetTorrents()[ih]; ok && tr.Percent == 100 {
+				break
+			}
+			if time.Since(start) > 5*time.Second {
+				t.Fatalf("transfer %d still unfinished after %s", i, time.Since(start).Round(time.Millisecond))
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		closeEngine(leech)
 	}
 }
