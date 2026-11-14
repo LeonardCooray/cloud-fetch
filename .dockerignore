@@ -1,0 +1,12 @@
+# local state and secrets must never reach the build context
+.git
+downloads
+cloud-fetch.json
+cloud-torrent.json
+share.key
+certs/
+tmp/
+dev.sh
+dist/
+e2e/
+.DS_Store
