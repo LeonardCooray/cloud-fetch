@@ -136,7 +136,7 @@ Any Linux works; Ubuntu 24.04 LTS or Debian 12 are good choices. Run these as ro
    systemctl daemon-reload && systemctl start cloud-fetch
    ```
 
-To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts the service and puts the previous binary back if the new one doesn't stay up. `cloud-fetch-update --check` shows the installed and latest versions, `cloud-fetch-update 0.1.1` installs a specific release, and `cloud-fetch-update --rollback` undoes the last update. To get a newer updater, rerun step 1.
+To upgrade, run `cloud-fetch-update`. It installs the latest release, restarts the service and puts the previous binary back if the new one doesn't stay up, or if its [health check](#health-check) still says `unavailable` 30 seconds after the restart settles. It finds the health check URL from the `--port`, `--host` and `--domain` flags in `ExecStart`, and connects to the server on this machine directly, so DNS doesn't matter. If those flags come from the environment file instead, set the URL with `HEALTH_URL=http://127.0.0.1:3000/healthz cloud-fetch-update`, or skip the check with `HEALTH_URL=`. Releases from before the health check (0.1.3 and earlier) answer it with 401 or 404, and the updater then relies on systemd alone, so rolling back to one still works. `cloud-fetch-update --check` shows the installed and latest versions, `cloud-fetch-update 0.1.1` installs a specific release, and `cloud-fetch-update --rollback` undoes the last update. To get a newer updater, rerun step 1.
 
 To run a build from source instead of a release, build it with a current Go and copy it over the binary, then restart:
 
@@ -211,6 +211,10 @@ Run once with `--acme-staging` first. Staging certificates aren't trusted by bro
 To give someone a file without giving them the password, use the link button on its row in Downloads and pick how long the link lasts: 1 hour, 24 hours or 7 days. The link is copied to the clipboard and downloads without a login until it expires. Range requests work, so VLC can seek and IDM can resume. On a folder, you get one link per finished file. Links only download; they can't delete or list anything.
 
 Links are signed with a random key kept in `share.key` next to the config file, so they survive restarts. **Revoke all share links** in Settings replaces that key, which stops every link shared so far. There's no way to revoke a single link.
+
+### Health check
+
+`GET /healthz` answers `ok` (200) when the server is up and the torrent engine is running and responding, and `unavailable` (503) otherwise, including for a couple of seconds while settings that restart the torrent client are applied. It needs no login and doesn't count toward the login lockout, so point an uptime monitor at `https://fetch.example.com/healthz`. It says nothing else, not even the version, since anyone can call it. The reason for a failure goes to the log (`Health check failing: ...`) when the result changes.
 
 ### Search providers
 

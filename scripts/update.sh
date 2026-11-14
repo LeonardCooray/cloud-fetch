@@ -7,8 +7,8 @@
 #   cloud-fetch-update --rollback put back the binary the last update replaced
 #   cloud-fetch-update --force    reinstall, or replace a source build
 #
-# BIN, SERVICE and REPO override the defaults below. The service must
-# already exist; see "Without Docker" in the README.
+# BIN, SERVICE, REPO and HEALTH_URL override the defaults below. The service
+# must already exist; see "Without Docker" in the README.
 set -euo pipefail
 
 BIN=${BIN:-/usr/local/bin/cloud-fetch}
@@ -16,6 +16,10 @@ SERVICE=${SERVICE:-cloud-fetch}
 REPO=${REPO:-LeonardCooray/cloud-fetch}
 # how long the restarted service must stay up before the update counts
 SETTLE=${SETTLE:-10}
+# how long /healthz may keep answering "unavailable" after that
+HEALTH_WAIT=${HEALTH_WAIT:-30}
+# HEALTH_URL unset works the URL out from the service's ExecStart, and
+# HEALTH_URL= (empty) skips the /healthz check
 
 die() { echo "update: $*" >&2; exit 1; }
 say() { echo "update: $*"; }
@@ -50,16 +54,106 @@ release_arch() {
 	esac
 }
 
+# Sets health_url, and health_resolve for --domain (so curl reaches this
+# machine under the certificate's name without asking DNS), from the
+# service's flags. Fails when they don't say, e.g. the port is "$PORT".
+health_target() {
+	health_url="" health_resolve=""
+	if [ -n "${HEALTH_URL+set}" ]; then
+		health_url=$HEALTH_URL
+		return 0
+	fi
+	local argv name val port=3000 host="" domain="" scheme=http addr
+	argv=$(systemctl show -p ExecStart --value "$SERVICE" | sed -n 's/.*argv\[\]=\([^;]*\) ;.*/\1/p')
+	# shellcheck disable=SC2086 # split the command line into its arguments
+	set -- $argv
+	while [ $# -gt 0 ]; do
+		case $1 in
+		-*)
+			name=${1#-} && name=${name#-} && val=""
+			case $name in
+			*=*) val=${name#*=} name=${name%%=*} ;;
+			port | p | host | h | domain) val=${2-} && shift ;;
+			esac
+			case $name in
+			port | p) port=$val ;;
+			host | h) host=$val ;;
+			domain) domain=$val ;;
+			cert-path | r | key-path | k) scheme=https ;;
+			esac
+			;;
+		esac
+		shift
+	done
+	case $port in '' | *[!0-9]*) return 1 ;; esac
+	case $host in
+	'' | 0.0.0.0 | :: | '[::]') addr=127.0.0.1 ;;
+	*:*) addr="[${host#[}" addr="${addr%]}]" ;;
+	*) addr=$host ;;
+	esac
+	if [ -n "$domain" ]; then
+		case $domain in *[!A-Za-z0-9.-]*) return 1 ;; esac
+		health_url="https://$domain:$port/healthz"
+		health_resolve="$domain:$port:$addr"
+	else
+		health_url="$scheme://$addr:$port/healthz"
+	fi
+}
+
+# Fails only when /healthz keeps answering "unavailable" for HEALTH_WAIT
+# seconds. Releases before it answer 401 or 404 and no answer at all may be a
+# wrong guess at the URL, so those leave it to the systemd checks.
+check_health() {
+	local health_url health_resolve resp code deadline
+	if ! health_target; then
+		say "can't tell where $SERVICE listens, so not checking /healthz (set HEALTH_URL)"
+		return 0
+	fi
+	[ -n "$health_url" ] || return 0
+	deadline=$((SECONDS + HEALTH_WAIT))
+	while :; do
+		# -k: it's this machine, and a staging certificate is fine
+		resp=$(curl -ks --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || true
+		code=${resp: -3} resp=${resp%???}
+		case $code in
+		200)
+			if [ "${resp%$'\n'}" = ok ]; then
+				say "$health_url says ok"
+				return 0
+			fi
+			code=other
+			;;
+		503) ;;
+		# curl's code when nothing answered, e.g. not listening yet
+		000) code=none ;;
+		[0-9][0-9][0-9]) code=other ;;
+		*) code=none ;;
+		esac
+		if [ "$code" = other ]; then
+			say "no /healthz at $health_url (likely a release before it), so not checking it"
+			return 0
+		fi
+		[ "$SECONDS" -lt "$deadline" ] || break
+		sleep 2
+	done
+	if [ "$code" = 503 ]; then
+		say "$health_url still says unavailable after ${HEALTH_WAIT}s"
+		return 1
+	fi
+	say "no answer from $health_url, so not checking /healthz"
+}
+
 # Restart=always hides a crash loop from is-active, so also require that
-# systemd didn't restart it again while it settled.
+# systemd didn't restart it again while it settled and answered /healthz.
 restart_and_check() {
-	local before after state
+	local before after state healthy=1
 	systemctl restart "$SERVICE"
 	before=$(systemctl show -p NRestarts --value "$SERVICE")
 	sleep "$SETTLE"
+	check_health || healthy=0
 	after=$(systemctl show -p NRestarts --value "$SERVICE")
 	state=$(systemctl show -p ActiveState --value "$SERVICE")
-	[ "$state" = active ] && [ "$before" = "$after" ]
+	[ "$state" = active ] && [ "$before" = "$after" ] && [ "$healthy" = 1 ]
 }
 
 # cp then rename, so $BIN is never missing or half-written

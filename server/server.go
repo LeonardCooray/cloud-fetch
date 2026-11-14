@@ -58,6 +58,9 @@ type Server struct {
 	//share links; the key is loaded on first use
 	shareMu     sync.Mutex
 	shareSecret []byte
+	//last /healthz result, so only changes are logged
+	healthMu  sync.Mutex
+	unhealthy bool
 	//torrent engine
 	engine *engine.Engine
 	state  struct {
@@ -308,11 +311,17 @@ func (s *Server) handler() http.Handler {
 		log.Printf("Enabled HTTP authentication")
 	}
 	// share links carry their own signature, so they skip the login, and
-	// gzip for the same reason /download/ does
+	// gzip for the same reason /download/ does. /healthz skips the login so
+	// monitors need no password, and checks no credentials, so it can't be
+	// used to guess one past the throttle.
 	authed := h
 	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/share/") {
 			s.serveShare(w, r)
+			return
+		}
+		if r.URL.Path == "/healthz" {
+			s.serveHealth(w, r)
 			return
 		}
 		authed.ServeHTTP(w, r)
