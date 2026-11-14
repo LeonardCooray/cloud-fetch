@@ -15,16 +15,28 @@ type Torrent struct {
 	Size       int64
 	Files      []*File
 	//cloud fetch
-	Started      bool
-	SpacePaused  bool // downloading held for low disk space; still Started
-	Dropped      bool
-	Percent      float32
-	DownloadRate float32
-	t            *torrent.Torrent
-	magnet       string
-	stopped      map[string]bool // file paths deselected by StopFile
-	verify       *verification
-	updatedAt    time.Time
+	Started     bool
+	SpacePaused bool // downloading held for low disk space; still Started
+	// waiting for a download slot (MaxActiveTorrents); still Started.
+	// QueuePosition is 1 for the next to start, 0 when not queued.
+	Queued        bool
+	QueuePosition int
+	Dropped       bool
+	Percent       float32
+	DownloadRate  float32
+	t             *torrent.Torrent
+	magnet        string
+	stopped       map[string]bool // file paths deselected by StopFile
+	verify        *verification
+	updatedAt     time.Time
+	// order is when it was last started; the queue goes earliest first
+	order int64
+	// forced: started over MaxActiveTorrents by Start now or a stream; it
+	// keeps downloading until it finishes, is paused or a slot reaches it
+	forced bool
+	// downloading mirrors anacrolix's data download flag, so it's only
+	// flipped on a change; anacrolix allows downloading on a new torrent
+	downloading bool
 }
 
 type File struct {
@@ -140,7 +152,22 @@ func (torrent *Torrent) verifying() bool {
 
 func (torrent *Torrent) holdForSpace() {
 	torrent.SpacePaused = true
-	torrent.t.DisallowDataDownload()
+	torrent.syncDownload()
+}
+
+// syncDownload lets anacrolix download only for a started torrent that
+// neither the low-disk guard nor the queue is holding.
+func (torrent *Torrent) syncDownload() {
+	want := torrent.Started && !torrent.SpacePaused && !torrent.Queued
+	if want == torrent.downloading {
+		return
+	}
+	torrent.downloading = want
+	if want {
+		torrent.t.AllowDataDownload()
+	} else {
+		torrent.t.DisallowDataDownload()
+	}
 }
 
 func percent(n, total int64) float32 {

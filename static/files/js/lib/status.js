@@ -7,12 +7,16 @@ export const STATUS_LABELS = {
   done: "Done",
   paused: "Paused",
   held: "On hold",
+  queued: "Queued",
 };
 
 // torrentStatus derives a torrent's state from the fields the server already
 // sends. A complete torrent that is still started is seeding only when the
 // engine uploads (EnableUpload and EnableSeeding); otherwise it's done. A
-// started one the low-disk guard holds (SpacePaused) is on hold.
+// started one waiting for a download slot (Queued) is queued, and one the
+// low-disk guard holds (SpacePaused) is on hold. Queued wins when both are
+// set: it won't download when space comes back either, and the low-disk
+// notice above the list already explains the hold.
 // selection sums the files ticked for download. Percent counts unticked
 // files too, so a torrent whose selected files are all complete is finished
 // even though Percent never reaches 100. Null when nothing is selected.
@@ -32,7 +36,10 @@ export function torrentStatus(t, { seeding = true } = {}) {
   if (!t || !t.Loaded) return "loading";
   const picked = selection(t);
   const complete = picked ? picked.complete : (t.Percent || 0) >= 100;
-  if (t.Started) return complete ? (seeding ? "seeding" : "done") : t.SpacePaused ? "held" : "downloading";
+  if (t.Started) {
+    if (complete) return seeding ? "seeding" : "done";
+    return t.Queued ? "queued" : t.SpacePaused ? "held" : "downloading";
+  }
   return complete ? "done" : "paused";
 }
 
@@ -71,8 +78,16 @@ export function statusLine(t, options) {
   const main = `${bytes(t.Downloaded)} of ${bytes(t.Size)} · ${Math.floor(t.Percent || 0)}%`;
   if (status === "paused") return { main, rate: null, note: null };
   if (status === "held") return { main, rate: null, note: "waiting for disk space" };
+  if (status === "queued") return { main, rate: null, note: t.QueuePosition > 0 ? `${ordinal(t.QueuePosition)} in line` : "waiting for a slot" };
   const rate = t.DownloadRate || 0;
   return { main, rate: `${bytes(rate)}/s`, note: rate > 0 ? eta(t) : "waiting for peers" };
+}
+
+// ordinal gives 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st and so on.
+export function ordinal(n) {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th";
+  return `${n}${suffix}`;
 }
 
 // totalRate is the header's overall download speed. The engine only reports

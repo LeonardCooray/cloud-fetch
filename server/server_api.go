@@ -111,6 +111,10 @@ func (s *Server) api(r *http.Request) error {
 			if err := s.engine.StopTorrent(infohash); err != nil {
 				return err
 			}
+		} else if state == "startnow" {
+			if err := s.engine.StartNow(infohash); err != nil {
+				return err
+			}
 		} else if state == "delete" {
 			if err := s.engine.DeleteTorrent(infohash); err != nil {
 				return err

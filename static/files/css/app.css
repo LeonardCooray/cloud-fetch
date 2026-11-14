@@ -276,9 +276,10 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .badge-downloading::before { animation: pulse 1.6s ease-in-out infinite; }
 .badge-seeding, .badge-done { background: var(--ok-bg); color: var(--ok); }
 .badge-paused, .badge-held { background: var(--warn-bg); color: var(--warn); }
+.badge-queued { background: var(--raised); color: var(--muted); }
 @keyframes pulse { 50% { opacity: 0.3; } }
 .torrent.is-seeding .progress .bar, .torrent.is-done .progress .bar { background: var(--ok); }
-.torrent.is-paused .progress .bar { background: var(--faint); }
+.torrent.is-paused .progress .bar, .torrent.is-queued .progress .bar { background: var(--faint); }
 .files-panel { margin-top: 4px; }
 .files { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 13px; }
 .files th {

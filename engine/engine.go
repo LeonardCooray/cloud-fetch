@@ -24,10 +24,13 @@ type Engine struct {
 	ts     map[string]*Torrent
 	// downloads are held for low disk space; see FreeSpace
 	lowDisk bool
+	limits  *limiters
+	// the last queue order handed out; see nextOrderLocked
+	lastOrder int64
 }
 
 func New() *Engine {
-	return &Engine{ts: map[string]*Torrent{}}
+	return &Engine{ts: map[string]*Torrent{}, limits: newLimiters()}
 }
 
 func (e *Engine) Config() Config {
@@ -57,10 +60,19 @@ func (e *Engine) Configure(c Config) error {
 	if c.DeleteDownloadsAfterDays < 0 || c.DeleteDownloadsAfterDays > 3650 {
 		return fmt.Errorf("Delete downloads after days must be between 0 and 3650")
 	}
+	if c.MaxDownloadKBps < 0 || c.MaxDownloadKBps > maxRateKBps || c.MaxUploadKBps < 0 || c.MaxUploadKBps > maxRateKBps {
+		return fmt.Errorf("Speed limits must be between 0 and %d KB/s", maxRateKBps)
+	}
+	if c.MaxActiveTorrents < 0 || c.MaxActiveTorrents > 10000 {
+		return fmt.Errorf("Max active torrents must be between 0 and 10000")
+	}
 	e.mut.Lock()
 	if e.client != nil && sameClient(e.config, c) {
-		// the next FreeSpace and CleanupDownloads calls apply the new values
+		// speed limits and the queue change now; the next FreeSpace and
+		// CleanupDownloads calls apply the other values
 		e.config = c
+		e.limits.set(c)
+		e.queueLocked()
 		e.mut.Unlock()
 		return nil
 	}
@@ -70,7 +82,7 @@ func (e *Engine) Configure(c Config) error {
 	if hadClient {
 		time.Sleep(1 * time.Second)
 	}
-	client, err := newClient(c)
+	client, err := newClient(c, e.limits)
 	if err == nil {
 		e.install(c, client)
 		return nil
@@ -85,7 +97,7 @@ func (e *Engine) Configure(c Config) error {
 			time.Sleep(restoreBackoff)
 		}
 		var back *torrent.Client
-		if back, berr = newClient(prev); berr == nil {
+		if back, berr = newClient(prev, e.limits); berr == nil {
 			e.install(prev, back)
 			return err
 		}
@@ -115,8 +127,12 @@ func (e *Engine) closeClientLocked() {
 	e.ts = map[string]*Torrent{}
 }
 
-func clientConfig(c Config) *torrent.ClientConfig {
+// clientConfig also sets l to c's speed limits, since the client shares them.
+func clientConfig(c Config, l *limiters) *torrent.ClientConfig {
 	config := torrent.NewDefaultClientConfig()
+	l.set(c)
+	config.DownloadRateLimiter = l.down
+	config.UploadRateLimiter = l.up
 	config.DataDir = c.DownloadDirectory
 	config.NoUpload = !c.EnableUpload
 	config.Seed = c.EnableSeeding
@@ -128,8 +144,8 @@ func clientConfig(c Config) *torrent.ClientConfig {
 }
 
 // newClient is a variable so tests can make client starts fail.
-var newClient = func(c Config) (*torrent.Client, error) {
-	return torrent.NewClient(clientConfig(c))
+var newClient = func(c Config, l *limiters) (*torrent.Client, error) {
+	return torrent.NewClient(clientConfig(c, l))
 }
 
 func (e *Engine) install(c Config, client *torrent.Client) {
@@ -161,9 +177,13 @@ func (e *Engine) restoreLocked() {
 			continue
 		}
 		// seeded before tracking so the first priority pass already skips them
-		e.upsertTorrent(tt).stopped = toSet(st.StoppedFiles)
+		t := e.upsertTorrent(tt)
+		t.stopped = toSet(st.StoppedFiles)
+		t.order, t.forced = st.Order, st.Forced
+		e.lastOrder = max(e.lastOrder, st.Order)
 		e.trackLocked(tt, st.Magnet, st.Started, false)
 	}
+	e.queueLocked()
 }
 
 func (e *Engine) NewMagnet(magnetURI string) error {
@@ -197,14 +217,22 @@ func (e *Engine) addSpec(spec *torrent.TorrentSpec, magnet string) error {
 		return err
 	}
 	existing, known := e.ts[tt.InfoHash().HexString()]
-	started := e.config.AutoStart || (known && existing.Started)
+	wasStarted := known && existing.Started
+	started := e.config.AutoStart || wasStarted
 	t := e.trackLocked(tt, magnet, started, !known)
+	if started && !wasStarted {
+		t.order = e.nextOrderLocked()
+	}
+	e.queueLocked()
 	e.saveLocked(t)
 	return nil
 }
 
-// trackLocked registers tt and applies its started state. Metadata may still
-// be unknown (magnets), so the .torrent save and DownloadAll wait for GotInfo.
+// trackLocked registers tt and applies its started state. With an active
+// limit set, a torrent it starts waits as queued until the caller's
+// queueLocked finds it a slot.
+// Metadata may still be unknown (magnets), so the .torrent save and
+// DownloadAll wait for GotInfo.
 // verify is set for torrents the person just added: the file storage treats
 // a same-size file at the final name as complete without hashing it, so
 // existing data is checked once here. Restores skip it; the completion
@@ -215,18 +243,19 @@ func (e *Engine) trackLocked(tt *torrent.Torrent, magnet string, started, verify
 		// a later .torrent add of the same torrent must not erase it
 		t.magnet = magnet
 	}
+	wasStarted := t.Started
 	t.Started = started
-	t.SpacePaused = false
+	t.SpacePaused = started && e.lowDisk
+	if started && !wasStarted && e.config.MaxActiveTorrents > 0 {
+		t.Queued = true
+	}
 	if started {
-		tt.AllowDataDownload()
 		tt.AllowDataUpload()
-		if e.lowDisk {
-			t.holdForSpace()
-		}
 	} else {
-		tt.DisallowDataDownload()
+		t.Queued, t.QueuePosition, t.forced = false, 0, false
 		tt.DisallowDataUpload()
 	}
+	t.syncDownload()
 	st := e.store
 	if tt.Info() != nil {
 		// synchronous so a .torrent add is on disk before the API call returns
@@ -346,7 +375,7 @@ func (e *Engine) saveLocked(t *Torrent) {
 		stopped = append(stopped, p)
 	}
 	sort.Strings(stopped)
-	r := record{InfoHash: t.InfoHash, Magnet: t.magnet, Started: t.Started, StoppedFiles: stopped}
+	r := record{InfoHash: t.InfoHash, Magnet: t.magnet, Started: t.Started, StoppedFiles: stopped, Order: t.order, Forced: t.forced}
 	if err := e.store.save(r); err != nil {
 		log.Printf("save %s: %s", t.InfoHash, err)
 	}
@@ -365,6 +394,8 @@ func (e *Engine) GetTorrents() map[string]*Torrent {
 	for _, tt := range e.client.Torrents() {
 		e.upsertTorrent(tt)
 	}
+	// a torrent that just finished frees its slot
+	e.queueLocked()
 	out := make(map[string]*Torrent, len(e.ts))
 	for ih, t := range e.ts {
 		c := *t
@@ -384,7 +415,7 @@ func (e *Engine) upsertTorrent(tt *torrent.Torrent) *Torrent {
 	ih := tt.InfoHash().HexString()
 	torrent, ok := e.ts[ih]
 	if !ok {
-		torrent = &Torrent{InfoHash: ih}
+		torrent = &Torrent{InfoHash: ih, downloading: true}
 		e.ts[ih] = torrent
 	}
 	//update torrent fields using underlying torrent
@@ -428,11 +459,103 @@ func (e *Engine) StartTorrent(infohash string) error {
 	if e.lowDisk {
 		return e.lowDiskError()
 	}
-	t.Started = true
-	t.t.AllowDataDownload()
-	t.t.AllowDataUpload()
+	e.startLocked(t)
 	e.saveLocked(t)
 	return nil
+}
+
+// startLocked resumes a paused torrent at the back of the queue, so it never
+// bumps a download that's already running.
+func (e *Engine) startLocked(t *Torrent) {
+	t.Started = true
+	t.order = e.nextOrderLocked()
+	if e.config.MaxActiveTorrents > 0 {
+		t.Queued = true
+	}
+	t.t.AllowDataUpload()
+	e.queueLocked()
+}
+
+// StartNow lets a queued torrent download straight away, over
+// MaxActiveTorrents, until it finishes or is paused. Nothing running is
+// bumped. A torrent that isn't queued (a slot freed up meanwhile) is left
+// as it is.
+func (e *Engine) StartNow(infohash string) error {
+	e.mut.Lock()
+	defer e.mut.Unlock()
+	t, err := e.getTorrent(infohash)
+	if err != nil {
+		return err
+	}
+	if !t.Started {
+		return fmt.Errorf("Paused: resume it instead")
+	}
+	if !t.Queued {
+		return nil
+	}
+	if e.lowDisk {
+		return e.lowDiskError()
+	}
+	e.forceLocked(t)
+	return nil
+}
+
+func (e *Engine) forceLocked(t *Torrent) {
+	t.forced = true
+	e.queueLocked()
+	e.saveLocked(t)
+}
+
+// nextOrderLocked hands out queue orders: the time, but never at or below
+// one already used, so a clock stepping back can't jump the queue.
+func (e *Engine) nextOrderLocked() int64 {
+	e.lastOrder = max(time.Now().UnixNano(), e.lastOrder+1)
+	return e.lastOrder
+}
+
+// queueLocked lets the MaxActiveTorrents earliest-started unfinished torrents
+// download and queues the rest. Paused and finished torrents hold no slot,
+// and a torrent waiting for metadata holds one. A forced torrent downloads
+// regardless and turns into an ordinary one when its turn for a slot comes.
+// The low-disk guard holds downloads separately (SpacePaused), so a slot it
+// holds stays taken and nothing queued starts in its place.
+func (e *Engine) queueLocked() {
+	var waiting []*Torrent
+	for _, t := range e.ts {
+		if t.Started && !t.Complete() {
+			waiting = append(waiting, t)
+			continue
+		}
+		t.Queued, t.QueuePosition = false, 0
+		if t.forced {
+			t.forced = false
+			e.saveLocked(t)
+		}
+		t.syncDownload()
+	}
+	sort.Slice(waiting, func(i, j int) bool {
+		if waiting[i].order != waiting[j].order {
+			return waiting[i].order < waiting[j].order
+		}
+		return waiting[i].InfoHash < waiting[j].InfoHash
+	})
+	limit, slots, pos := e.config.MaxActiveTorrents, 0, 0
+	for _, t := range waiting {
+		t.Queued, t.QueuePosition = false, 0
+		switch {
+		case limit <= 0 || slots < limit:
+			slots++
+			if t.forced {
+				t.forced = false
+				e.saveLocked(t)
+			}
+		case t.forced:
+		default:
+			pos++
+			t.Queued, t.QueuePosition = true, pos
+		}
+		t.syncDownload()
+	}
 }
 
 // StopTorrent pauses rather than drops, so the torrent can be started again.
@@ -446,11 +569,14 @@ func (e *Engine) StopTorrent(infohash string) error {
 	if !t.Started {
 		return fmt.Errorf("Already stopped")
 	}
-	t.t.DisallowDataDownload()
-	t.t.DisallowDataUpload()
 	t.Started = false
 	// paused by hand now, so space coming back doesn't resume it
 	t.SpacePaused = false
+	t.Queued, t.QueuePosition, t.forced = false, 0, false
+	t.syncDownload()
+	t.t.DisallowDataUpload()
+	// its slot goes to the next in the queue
+	e.queueLocked()
 	e.saveLocked(t)
 	return nil
 }
@@ -492,7 +618,7 @@ func (e *Engine) FreeSpace(free int64) bool {
 			t.holdForSpace()
 		case !low && t.SpacePaused:
 			t.SpacePaused = false
-			t.t.AllowDataDownload()
+			t.syncDownload()
 		}
 	}
 	return low
@@ -511,6 +637,7 @@ func (e *Engine) DeleteTorrent(infohash string) error {
 		return err
 	}
 	e.dropLocked(t)
+	e.queueLocked()
 	return nil
 }
 
@@ -585,6 +712,8 @@ func (e *Engine) selectFile(infohash, path string, selected bool) error {
 		file.SetPriority(torrent.PiecePriorityNone)
 	}
 	e.upsertTorrent(t.t)
+	// deselecting what's left can finish a torrent and free its slot
+	e.queueLocked()
 	e.saveLocked(t)
 	return nil
 }

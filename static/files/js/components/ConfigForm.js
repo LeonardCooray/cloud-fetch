@@ -2,6 +2,17 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { html } from "../html.js";
 import { addSpaces, inputType } from "../lib/format.js";
 
+// field names whose spaced-out form reads badly
+const LABELS = {
+  MaxDownloadKBps: "Max Download KB/s",
+  MaxUploadKBps: "Max Upload KB/s",
+};
+const label = (k) => LABELS[k] || addSpaces(k);
+
+// the engine's caps (engine.maxRateKBps and Configure)
+const MAX_RATE_KBPS = 2000000;
+const MAX_ACTIVE = 10000;
+
 // Edits a copy taken when the form opens, so the server's once-a-second
 // pushes can't overwrite typing and Cancel discards everything.
 export function ConfigForm({ config, api, onError, onClose }) {
@@ -27,7 +38,13 @@ export function ConfigForm({ config, api, onError, onClose }) {
       if (k === "DeleteDownloadsAfterDays" && (!whole || n < 0 || n > 3650)) {
         return { error: "Enter 0 to 3650 days for Delete Downloads After (0 keeps downloads forever)" };
       }
-      if (!whole) return { error: `Enter a whole number for ${addSpaces(k)}` };
+      if ((k === "MaxDownloadKBps" || k === "MaxUploadKBps") && (!whole || n < 0 || n > MAX_RATE_KBPS)) {
+        return { error: `Enter 0 to ${MAX_RATE_KBPS} KB/s for ${label(k)} (0 is unlimited)` };
+      }
+      if (k === "MaxActiveTorrents" && (!whole || n < 0 || n > MAX_ACTIVE)) {
+        return { error: `Enter 0 to ${MAX_ACTIVE} for Max Active Torrents (0 is no limit)` };
+      }
+      if (!whole) return { error: `Enter a whole number for ${label(k)}` };
       out[k] = n;
     }
     return { config: out };
@@ -55,10 +72,10 @@ export function ConfigForm({ config, api, onError, onClose }) {
       const type = inputType(config[k]);
       if (type === "checkbox") {
         return html`<label class="check" key=${k}>
-          <input type="checkbox" checked=${v} onChange=${(e) => set(k, e.currentTarget.checked)} /> ${addSpaces(k)}
+          <input type="checkbox" checked=${v} onChange=${(e) => set(k, e.currentTarget.checked)} /> ${label(k)}
         </label>`;
       }
-      return html`<label key=${k}>${addSpaces(k)}
+      return html`<label key=${k}>${label(k)}
         <input type=${type} value=${v}
           onInput=${(e) => set(k, e.currentTarget.value)} />
       </label>`;
