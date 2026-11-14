@@ -45,14 +45,13 @@ func (e *Engine) runProbe(p *healthProbe) {
 }
 
 func (e *Engine) probeClient() error {
+	// e.mut stays held so Configure can't close this client mid-check;
+	// GetTorrents nests the two locks the same way every second
 	e.mut.Lock()
-	client := e.client
-	e.mut.Unlock()
-	if client == nil {
+	defer e.mut.Unlock()
+	if e.client == nil {
 		return errNotRunning
 	}
-	// a closed client still answers, but closing only happens under e.mut
-	// and leaves e.client nil, which the next check sees
-	client.Torrents()
+	e.client.Torrents()
 	return nil
 }

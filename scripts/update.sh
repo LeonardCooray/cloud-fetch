@@ -55,31 +55,46 @@ release_arch() {
 }
 
 # Sets health_url, and health_resolve for --domain (so curl reaches this
-# machine under the certificate's name without asking DNS), from the
-# service's flags. Fails when they don't say, e.g. the port is "$PORT".
+# machine under the certificate's name without asking DNS), from the running
+# process's arguments and environment as systemd expanded them. Fails when
+# it can't read them.
 health_target() {
 	health_url="" health_resolve=""
 	if [ -n "${HEALTH_URL+set}" ]; then
 		health_url=$HEALTH_URL
 		return 0
 	fi
-	local argv name val port=3000 host="" domain="" scheme=http addr
-	argv=$(systemctl show -p ExecStart --value "$SERVICE" | sed -n 's/.*argv\[\]=\([^;]*\) ;.*/\1/p')
-	# shellcheck disable=SC2086 # split the command line into its arguments
-	set -- $argv
+	local pid name val port=3000 host="" domain="" scheme=http addr
+	local -a args env
+	pid=$(systemctl show -p MainPID --value "$SERVICE")
+	if [ "${pid:-0}" = 0 ] || [ ! -r "/proc/$pid/cmdline" ]; then
+		return 1
+	fi
+	mapfile -d '' args <"/proc/$pid/cmdline" || return 1
+	mapfile -d '' env <"/proc/$pid/environ" || return 1
+	# opts reads these two from the environment, and flags override them
+	for val in "${env[@]}"; do
+		case $val in
+		PORT=*) port=${val#PORT=} ;;
+		DOMAIN=*) domain=${val#DOMAIN=} ;;
+		esac
+	done
+	set -- "${args[@]:1}"
 	while [ $# -gt 0 ]; do
 		case $1 in
 		-*)
-			name=${1#-} && name=${name#-} && val=""
+			name=${1#-} name=${name#-} val=""
 			case $name in
 			*=*) val=${name#*=} name=${name%%=*} ;;
-			port | p | host | h | domain) val=${2-} && shift ;;
+			# the boolean flags; every other flag takes the next argument
+			log | l | open | o | acme-staging | help | version | v) ;;
+			*) val=${2-} && shift ;;
 			esac
 			case $name in
 			port | p) port=$val ;;
 			host | h) host=$val ;;
 			domain) domain=$val ;;
-			cert-path | r | key-path | k) scheme=https ;;
+			cert-path | key-path | k) scheme=https ;;
 			esac
 			;;
 		esac
@@ -91,18 +106,34 @@ health_target() {
 	*:*) addr="[${host#[}" addr="${addr%]}]" ;;
 	*) addr=$host ;;
 	esac
-	if [ -n "$domain" ]; then
-		case $domain in *[!A-Za-z0-9.-]*) return 1 ;; esac
-		health_url="https://$domain:$port/healthz"
-		health_resolve="$domain:$port:$addr"
-	else
+	if [ -z "$domain" ]; then
 		health_url="$scheme://$addr:$port/healthz"
+		return 0
 	fi
+	case $domain in *[!A-Za-z0-9.-]*) return 1 ;; esac
+	# --resolve takes an address, not a name
+	case $addr in
+	\[*) ;;
+	*[!0-9.]*) addr=$(getent ahostsv4 "$addr" | awk 'NR == 1 { print $1 }') || true ;;
+	esac
+	[ -n "$addr" ] || return 1
+	health_url="https://$domain:$port/healthz"
+	health_resolve="$domain:$port:$addr"
 }
 
-# Fails only when /healthz keeps answering "unavailable" for HEALTH_WAIT
-# seconds. Releases before it answer 401 or 404 and no answer at all may be a
-# wrong guess at the URL, so those leave it to the systemd checks.
+# still_up NRESTARTS: the service is active and systemd hasn't restarted it
+# since NRestarts was NRESTARTS. Restart=always hides a crash loop from
+# is-active, hence the count.
+still_up() {
+	[ "$(systemctl show -p ActiveState --value "$SERVICE")" = active ] &&
+		[ "$(systemctl show -p NRestarts --value "$SERVICE")" = "$1" ]
+}
+
+# check_health NRESTARTS fails only when /healthz keeps answering
+# "unavailable" for HEALTH_WAIT seconds. Releases before it answer 401 or 404,
+# and no answer at all may be a first Let's Encrypt certificate still being
+# issued, so those leave it to the systemd checks. It stops waiting if the
+# service goes down, which they catch.
 check_health() {
 	local health_url health_resolve resp code deadline
 	if ! health_target; then
@@ -111,7 +142,7 @@ check_health() {
 	fi
 	[ -n "$health_url" ] || return 0
 	deadline=$((SECONDS + HEALTH_WAIT))
-	while :; do
+	while still_up "$1"; do
 		# -k: it's this machine, and a staging certificate is fine
 		resp=$(curl -ks --max-time 5 -w '%{http_code}' ${health_resolve:+--resolve "$health_resolve"} "$health_url") || true
 		code=${resp: -3} resp=${resp%???}
@@ -133,27 +164,25 @@ check_health() {
 			say "no /healthz at $health_url (likely a release before it), so not checking it"
 			return 0
 		fi
-		[ "$SECONDS" -lt "$deadline" ] || break
+		if [ "$SECONDS" -ge "$deadline" ]; then
+			if [ "$code" = 503 ]; then
+				say "$health_url still says unavailable after ${HEALTH_WAIT}s"
+				return 1
+			fi
+			say "no answer from $health_url, so not checking /healthz"
+			return 0
+		fi
 		sleep 2
 	done
-	if [ "$code" = 503 ]; then
-		say "$health_url still says unavailable after ${HEALTH_WAIT}s"
-		return 1
-	fi
-	say "no answer from $health_url, so not checking /healthz"
 }
 
-# Restart=always hides a crash loop from is-active, so also require that
-# systemd didn't restart it again while it settled and answered /healthz.
 restart_and_check() {
-	local before after state healthy=1
+	local before healthy=1
 	systemctl restart "$SERVICE"
 	before=$(systemctl show -p NRestarts --value "$SERVICE")
 	sleep "$SETTLE"
-	check_health || healthy=0
-	after=$(systemctl show -p NRestarts --value "$SERVICE")
-	state=$(systemctl show -p ActiveState --value "$SERVICE")
-	[ "$state" = active ] && [ "$before" = "$after" ] && [ "$healthy" = 1 ]
+	check_health "$before" || healthy=0
+	still_up "$before" && [ "$healthy" = 1 ]
 }
 
 # cp then rename, so $BIN is never missing or half-written
